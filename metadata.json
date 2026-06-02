@@ -1,0 +1,6 @@
+{
+  "name": "Markdown Convert to Docs",
+  "description": "Upload a Markdown blog post and automatically convert it an elegantly styled Google Doc in your Drive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
