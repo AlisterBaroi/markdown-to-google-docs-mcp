@@ -121,7 +121,7 @@ export default function FolderSelector({ accessToken, onSelectFolder, selectedFo
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col h-[400px] transition-colors duration-200" id="folder-selector">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col h-[520px] transition-colors duration-200" id="folder-selector">
       {/* Header with quick breadcrumbs */}
       <div className="px-4 py-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center text-sm text-slate-650 dark:text-slate-300 gap-1 flex-wrap">
