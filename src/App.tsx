@@ -600,8 +600,8 @@ export default function App() {
       {/* Absolute Bottom Status Bar */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-5 transition-colors duration-200" id="application-footer">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
-          <p>© 2026 Markdown to Docs converter. All corporate rights reserved.</p>
-          <p className="text-slate-400 dark:text-slate-500">Uses Google Documents & Google Drive APIs with secure credentials.</p>
+          <p>© 2026 <a href="https://github.com/alisterbaroi" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">Alister Baroi</a>. All rights reserved.</p>
+          <p className="text-slate-400 dark:text-slate-500">Uses Google Documents & Google Drive APIs.</p>
         </div>
       </footer>
     </div>

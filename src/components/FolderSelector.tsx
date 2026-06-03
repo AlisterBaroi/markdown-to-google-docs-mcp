@@ -153,35 +153,35 @@ export default function FolderSelector({ accessToken, onSelectFolder, selectedFo
       </div>
 
       {/* Search and Quick folder creation inputs */}
-      <div className="p-3 border-b border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-2 bg-white dark:bg-slate-900">
+      <div className="p-3 border-b border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 bg-white dark:bg-slate-900">
         {/* Search Input */}
-        <div className="relative">
+        <div className="relative min-w-0">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 dark:text-slate-500" />
           <input
             type="text"
             placeholder="Search folders..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full pl-9 pr-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 min-w-0"
             id="search-folders-input"
           />
         </div>
 
         {/* Quick Folder Creation */}
-        <form onSubmit={handleCreateFolder} className="flex gap-2">
+        <form onSubmit={handleCreateFolder} className="relative min-w-0">
           <input
             type="text"
             placeholder="New folder name..."
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            className="flex-1 px-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full pl-3 pr-24 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             disabled={isCreatingFolder}
             id="new-folder-name"
           />
           <button
             type="submit"
             disabled={isCreatingFolder || !newFolderName.trim()}
-            className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 rounded-xl flex items-center gap-1 cursor-pointer transition shrink-0 shadow-xs"
+            className="absolute right-1 top-1 bottom-1 px-2.5 py-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-xs"
             id="btn-create-folder"
           >
             {isCreatingFolder ? (
@@ -189,7 +189,7 @@ export default function FolderSelector({ accessToken, onSelectFolder, selectedFo
             ) : (
               <FolderPlus className="w-3.5 h-3.5" />
             )}
-            Create
+            <span>Create</span>
           </button>
         </form>
       </div>
