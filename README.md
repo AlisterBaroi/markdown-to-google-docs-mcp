@@ -98,44 +98,20 @@ You can serve the static build using a lightweight node-based filesystem server 
    *(Ensure you have installed the server as a dependency beforehand: `npm install serve`)*
 
 ### Mode B: Containerized with Docker & Nginx (Best practice for Cloud Run or Kubernetes)
-To build a highly performant container image using Nginx to serve the assets with custom cache headers and fallback routing:
+The repository includes a highly performant `Dockerfile` and `nginx.conf` configuration to serve the compiled assets with custom SPA routing fallbacks.
 
-1. **Create a `Dockerfile` at the root folder:**
-   ```dockerfile
-   # --- Build Stage ---
-   FROM node:20-alpine AS build
-   WORKDIR /app
-   COPY package*.json ./
-   RUN npm install
-   COPY . .
-   RUN npm run build
+To build and run the container image locally:
 
-   # --- Production Stage ---
-   FROM nginx:stable-alpine
-   COPY --from=build /app/dist /usr/share/nginx/html
-   COPY nginx.conf /etc/nginx/conf.d/default.conf
-   EXPOSE 80
-   CMD ["nginx", "-g", "daemon off;"]
+1. **Build the container:**
+   ```bash
+   docker build -t markdown-to-docs .
    ```
 
-2. **Create the corresponding `nginx.conf` matching SPA route requirements:**
-   ```nginx
-   server {
-       listen 80;
-       server_name localhost;
-
-       location / {
-           root /usr/share/nginx/html;
-           index index.html index.htm;
-           try_files $uri /index.html; # SPA routing fallback
-       }
-
-       error_page 500 502 503 504 /50x.html;
-       location = /50x.html {
-           root /usr/share/nginx/html;
-       }
-   }
+2. **Run the container (exposed on port 8080 locally):**
+   ```bash
+   docker run -d -p 8080:80 markdown-to-docs
    ```
+   *Your app will be live at http://localhost:8080.*
 
 ### Mode C: Serverless Edge Hosting (Zero Maintenance)
 Because the output contains only static files, you can deploy the `/dist/` folder directly to zero-config CDN and modern serverless platforms:
