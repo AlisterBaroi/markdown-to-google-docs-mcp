@@ -4,22 +4,13 @@
 
 ---
 
-## 🎨 Visual Identity & Styling
-
-This application features a highly modular, interactive, and beautifully responsive design:
-- **Clean Slate Interface**: Built using modern **Tailwind CSS** with elegant spacing, soft grays, and precise layout structures.
-- **Dynamic Header**: Features an inline header spanning a vertical height of `60px` with a sleek, interactive border and high contrast.
-- **Responsive Theme Mechanics**: Includes seamless dark and light mode transitions. In dark mode, interactive controls (such as the Sun icon) are styled using crisp white accents and high transparency backdrops.
-- **Micro-interactions**: Enhanced profile dropdowns and user navigation menus, highlighted by soft custom transitions (such as light-blue hover backgrounds on sign-out blocks).
-
----
-
 ## ✨ Features
 
 - **📂 Fluid Drag & Drop / Direct Selection**: Easily queue multiple `.md` files for conversion in a sleek drop zone, or browse locally.
 - **📁 Google Drive Folder Browser**: Double-click folder rows, search specific subdirectories, and create fresh folders directly within the UI to choose the perfect generation target.
 - **✍️ Presets & Typography Formatting**: Custom configurations for layout presets, titles, and section style presets automatically converted to Doc headings.
 - **🔐 Secure Client Google Integration**: Authenticate seamlessly via Google OAuth with direct permission flows and real-time connectivity states.
+- **✍️ Clean & Modern UI**: Built using modern **Tailwind CSS**, seamless dark and light mode transitions, and designed with modern micro-interactions in mind.
 
 ---
 
