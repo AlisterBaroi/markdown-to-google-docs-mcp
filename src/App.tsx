@@ -350,7 +350,7 @@ export default function App() {
               id="theme-toggle-btn"
             >
               {isDark ? (
-                <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+                <Sun className="w-4 h-4 text-white fill-white/20" />
               ) : (
                 <Moon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               )}
@@ -395,7 +395,7 @@ export default function App() {
                             setShowProfileDropdown(false);
                             handleLogout();
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-905 bg-opacity-10 dark:hover:bg-red-950/20 rounded-lg font-medium transition cursor-pointer select-none text-left"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg font-medium transition cursor-pointer select-none text-left"
                           title="Disconnect and log out"
                         >
                           <LogOut className="w-4 h-4" />
@@ -440,7 +440,7 @@ export default function App() {
                 className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 rounded-xl hover:bg-slate-50/80 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold text-xs py-3 px-4 shadow-sm transition-all duration-200 cursor-pointer"
                 id="google-login-btn"
               >
-                <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center bg-white rounded-sm">
+                <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
                   <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-full h-full block">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
                     <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
