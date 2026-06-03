@@ -322,14 +322,14 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200" id="application-container">
       {/* Dynamic Navigation Header */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 shadow-sm transition-colors duration-200" id="navigation-header">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[60px] flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-sm select-none shadow-sm">
               M
             </div>
-            <div>
-              <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white block leading-tight">Markdown to Docs</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">Transform Markdown files into Google Docs</span>
+            <div className="flex flex-col justify-center gap-[3px]">
+              <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white block leading-none">Markdown to Docs</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold block leading-none">Transform Markdown files into Google Docs</span>
             </div>
           </div>
 
