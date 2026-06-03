@@ -16,7 +16,9 @@ import {
   ExternalLink,
   ChevronRight,
   BookOpen,
-  ArrowRight
+  ArrowRight,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 
@@ -68,6 +70,19 @@ const DEFAULT_SETTINGS: ConversionSettings = {
 const LOCAL_STORAGE_SETTINGS_KEY = 'md_to_gdocs_converter_settings';
 
 export default function App() {
+  // Theme state
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    try {
+      const persisted = localStorage.getItem('md_to_gdocs_theme');
+      if (persisted !== null) {
+        return persisted === 'dark';
+      }
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
+  });
+
   // Auth state
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -94,6 +109,21 @@ export default function App() {
   const [successCount, setSuccessCount] = useState(0);
   
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  // Update theme class on HTML element layout
+  useEffect(() => {
+    try {
+      localStorage.setItem('md_to_gdocs_theme', isDark ? 'dark' : 'light');
+    } catch (err) {
+      console.error('Failed to preserve theme selection:', err);
+    }
+    
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDark]);
 
   // Initialize Auth state listener
   useEffect(() => {
@@ -281,87 +311,102 @@ export default function App() {
   // Display loader while auth checks on boot
   if (loadingAuth && !user) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
-        <h2 className="text-sm font-bold text-gray-700">Connecting Google Workspace...</h2>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 transition-colors duration-200">
+        <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-500 animate-spin mb-3" />
+        <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300">Connecting Google Workspace...</h2>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans" id="application-container">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200" id="application-container">
       {/* Dynamic Navigation Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm" id="navigation-header">
+      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 shadow-sm transition-colors duration-200" id="navigation-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-sm select-none shadow-sm">
               M
             </div>
             <div>
-              <span className="text-lg font-semibold tracking-tight text-slate-900 block leading-tight">MarkdownToDoc</span>
-              <span className="text-[10px] text-slate-400 font-semibold">Transform blog drafts into Google Docs</span>
+              <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white block leading-tight">Markdown to Docs</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">Transform Markdown files into Google Docs</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {user ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 rounded-full text-xs font-medium text-slate-650 shrink-0">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="font-semibold text-[11px]">Google Drive Connected</span>
-                </div>
-                
-                {/* User Profile Dropdown */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                    className="flex items-center justify-center focus:outline-none rounded-full ring-2 ring-transparent transition hover:ring-blue-100 active:ring-blue-200 cursor-pointer select-none"
-                  >
-                    {user.photoURL ? (
-                      <img 
-                        src={user.photoURL} 
-                        alt="avatar" 
-                        referrerPolicy="no-referrer"
-                        className="w-8 h-8 rounded-full border border-slate-200 shadow-sm" 
-                      />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-200 shadow-sm">
-                        {(user.displayName || 'U')[0]}
-                      </div>
-                    )}
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showProfileDropdown && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40" 
-                        onClick={() => setShowProfileDropdown(false)}
-                      ></div>
-                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <div className="px-4 py-2 border-b border-slate-100">
-                          <p className="text-sm font-bold text-slate-800 truncate leading-tight">{user.displayName || 'Author'}</p>
-                          <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{user.email}</p>
-                        </div>
-                        <div className="p-1 mt-1">
-                          <button
-                            onClick={() => {
-                              setShowProfileDropdown(false);
-                              handleLogout();
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg font-medium transition cursor-pointer select-none text-left"
-                            title="Disconnect and log out"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            Sign Out
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
+          <div className="flex items-center gap-3">
+            {user && (
+              <div className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-full text-xs font-medium text-slate-600 dark:text-slate-400 shrink-0 border border-transparent dark:border-slate-800">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-semibold text-[11px] hidden sm:inline">Google Drive Connected</span>
               </div>
-            ) : null}
+            )}
+
+            {/* Dark Mode Toggle Button */}
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition duration-150 cursor-pointer select-none"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Dark Mode"
+              id="theme-toggle-btn"
+            >
+              {isDark ? (
+                <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+              ) : (
+                <Moon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              )}
+            </button>
+
+            {user && (
+              /* User Profile Dropdown */
+              <div className="relative">
+                <button 
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                  className="flex items-center justify-center focus:outline-none rounded-full ring-2 ring-transparent transition hover:ring-blue-100 dark:hover:ring-blue-900 active:ring-blue-200 cursor-pointer select-none"
+                >
+                  {user.photoURL ? (
+                    <img 
+                      src={user.photoURL} 
+                      alt="avatar" 
+                      referrerPolicy="no-referrer"
+                      className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm" 
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center border border-blue-200 dark:border-blue-800 shadow-sm">
+                      {(user.displayName || 'U')[0]}
+                    </div>
+                  )}
+                </button>
+
+                {/* Dropdown Menu */}
+                {showProfileDropdown && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowProfileDropdown(false)}
+                    ></div>
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+                        <p className="text-sm font-bold text-slate-800 dark:text-white truncate leading-tight">{user.displayName || 'Author'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">{user.email}</p>
+                      </div>
+                      <div className="p-1 mt-1">
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            handleLogout();
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-905 bg-opacity-10 dark:hover:bg-red-950/20 rounded-lg font-medium transition cursor-pointer select-none text-left"
+                          title="Disconnect and log out"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -371,19 +416,19 @@ export default function App() {
         {!user ? (
           /* Sign-In Welcome Gate Layout with a bordered card */
           <div className="max-w-[540px] mx-auto my-auto w-full px-4 py-8" id="welcome-gate">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-md flex flex-col items-center text-center gap-6">
-              <div className="p-4 bg-blue-50 text-blue-600 rounded-full">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 sm:p-10 shadow-md flex flex-col items-center text-center gap-6">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-full">
                 <BookOpen className="w-10 h-10" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Convert Markdown Blogs to Google Docs</h2>
-                <p className="text-xs text-slate-500 mt-2.5 max-w-md mx-auto leading-relaxed">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Convert Markdown Files to Google Docs</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2.5 max-w-md mx-auto leading-relaxed">
                   Connect your account to parse lists, titles, and sectional header presets automatically. Style typography and margins, and organize your files within customized Drive folders.
                 </p>
               </div>
 
               {authError && (
-                <div className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100 font-semibold max-w-md flex items-start gap-2 text-left">
+                <div className="text-xs text-red-600 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-100 dark:border-red-900/30 font-semibold max-w-md flex items-start gap-2 text-left">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                   <span>{authError}</span>
                 </div>
@@ -392,7 +437,7 @@ export default function App() {
               {/* Google Sign-In Styled Button matching specs */}
               <button 
                 onClick={handleLogin} 
-                className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:border-slate-400 rounded-xl hover:bg-slate-50/80 text-slate-700 font-semibold text-xs py-3 px-4 shadow-sm transition-all duration-200 cursor-pointer"
+                className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 rounded-xl hover:bg-slate-50/80 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold text-xs py-3 px-4 shadow-sm transition-all duration-200 cursor-pointer"
                 id="google-login-btn"
               >
                 <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center bg-white rounded-sm">
@@ -415,13 +460,13 @@ export default function App() {
             <div className="lg:col-span-7 flex flex-col gap-6" id="left-sidebar-controls">
               
               {/* Tabs for Markdown and Style Presets */}
-              <div className="flex border-b border-slate-200">
+              <div className="flex border-b border-slate-200 dark:border-slate-800">
                 <button
                   onClick={() => setActiveTab('upload')}
                   className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${
                     activeTab === 'upload'
-                      ? 'border-blue-600 text-blue-600 font-bold'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
+                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                   id="tab-selector-upload"
                 >
@@ -432,8 +477,8 @@ export default function App() {
                   onClick={() => setActiveTab('settings')}
                   className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${
                     activeTab === 'settings'
-                      ? 'border-blue-600 text-blue-600 font-bold'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
+                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                   id="tab-selector-presets"
                 >
@@ -459,13 +504,13 @@ export default function App() {
               )}
 
               {/* Master execution block */}
-              <div className="bg-white border border-slate-200 p-6 rounded-2xl flex flex-col gap-5 shadow-sm" id="master-execution-panel">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex flex-col gap-5 shadow-sm" id="master-execution-panel">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-800">Ready to convert?</h4>
-                    <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
+                    <h4 className="text-sm font-semibold text-slate-800 dark:text-white">Ready to convert?</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium leading-relaxed">
                       Saving into:{' '}
-                      <span className="font-bold text-blue-600 truncate inline-block max-w-[200px] sm:max-w-[400px] align-bottom">
+                      <span className="font-bold text-blue-600 dark:text-blue-400 truncate inline-block max-w-[200px] sm:max-w-[400px] align-bottom">
                         {selectedFolder.fullPath}
                       </span>
                     </p>
@@ -474,7 +519,7 @@ export default function App() {
                   <button
                     onClick={handleConvertAll}
                     disabled={isProcessing || uploadedFiles.length === 0}
-                    className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200/50 select-none cursor-pointer transition shrink-0"
+                    className="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200/50 dark:shadow-none select-none cursor-pointer transition shrink-0"
                     id="btn-trigger-conversion"
                   >
                     {isProcessing ? (
@@ -493,19 +538,19 @@ export default function App() {
 
                 {/* Conversion outcome feedback alerts */}
                 {globalError && (
-                  <div className="p-3 bg-red-50 text-red-600 text-xs font-semibold rounded-xl border border-red-100 flex items-start gap-2">
+                  <div className="p-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs font-semibold rounded-xl border border-red-100 dark:border-red-900/35 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                     <span>{globalError}</span>
                   </div>
                 )}
 
                 {successCount > 0 && !isProcessing && (
-                  <div className="p-4 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-xl border border-emerald-100/80 flex items-start gap-2.5">
-                    <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-350 text-xs font-semibold rounded-xl border border-emerald-100/80 dark:border-emerald-900/30 flex items-start gap-2.5">
+                    <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
                     <div>
-                      <p className="font-bold text-sm text-emerald-900">Conversion completed successfully!</p>
-                      <p className="text-[11px] text-emerald-600 font-medium mt-1">
-                        {successCount} blog draft(s) were compiled and stored in Google Drive. Read links are active below.
+                      <p className="font-bold text-sm text-emerald-900 dark:text-emerald-300">Conversion completed successfully!</p>
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">
+                        {successCount} Markdown file(s) were compiled and stored in Google Drive. Read links are active below.
                       </p>
                     </div>
                   </div>
@@ -513,8 +558,8 @@ export default function App() {
                 
                 {/* Completed Google Docs hyperlinks */}
                 {uploadedFiles.some(f => f.status === 'success') && (
-                  <div className="border-t border-slate-200 pt-4 flex flex-col gap-2.5">
-                    <p className="text-[10px] uppercase font-bold text-slate-450 tracking-wider">Access Created Google Documents:</p>
+                  <div className="border-t border-slate-200 dark:border-slate-800 pt-4 flex flex-col gap-2.5">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Access Created Google Documents:</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[140px] overflow-y-auto pr-0.5">
                       {uploadedFiles.filter(f => f.status === 'success').map((f, idx) => (
                         <a
@@ -522,11 +567,11 @@ export default function App() {
                            href={f.docUrl}
                            target="_blank"
                            rel="noopener noreferrer"
-                           className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100/50 transition truncate select-none text-xs text-emerald-850 font-bold"
+                           className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/20 transition truncate select-none text-xs text-emerald-800 dark:text-emerald-300 font-bold"
                            title="Open Google Doc in new tab"
                         >
                            <span className="truncate mr-2">{f.name.replace(/\.md$/i, '')}</span>
-                           <ExternalLink className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                           <ExternalLink className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         </a>
                       ))}
                     </div>
@@ -537,8 +582,8 @@ export default function App() {
 
             {/* Right Column: Destination Browser Folder Selection */}
             <div className="lg:col-span-5 flex flex-col gap-4.5" id="right-sidebar">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
-                <FolderOpen className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+                <FolderOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 <h3>Google Drive Destination Save Path</h3>
               </div>
 
@@ -553,10 +598,10 @@ export default function App() {
       </main>
       
       {/* Absolute Bottom Status Bar */}
-      <footer className="bg-white border-t border-slate-200 py-5" id="application-footer">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 font-medium">
-          <p>© 2026 MarkdownToDoc converter. All corporate rights reserved.</p>
-          <p className="text-slate-400">Uses Google Documents & Google Drive APIs with secure credentials.</p>
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-5 transition-colors duration-200" id="application-footer">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <p>© 2026 Markdown to Docs converter. All corporate rights reserved.</p>
+          <p className="text-slate-400 dark:text-slate-500">Uses Google Documents & Google Drive APIs with secure credentials.</p>
         </div>
       </footer>
     </div>

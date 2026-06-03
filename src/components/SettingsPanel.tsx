@@ -37,21 +37,21 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
     const format = settings[key];
 
     return (
-      <div className="bg-white p-4.5 rounded-xl border border-slate-200 hover:border-blue-200 hover:shadow-xs transition duration-200 gap-3.5 flex flex-col" id={`settings-section-${key}`}>
+      <div className="bg-white dark:bg-slate-900/40 p-4.5 rounded-xl border border-slate-200 dark:border-slate-800/80 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow-xs transition duration-200 gap-3.5 flex flex-col" id={`settings-section-${key}`}>
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-semibold text-slate-800 capitalize">
+            <h4 className="text-sm font-semibold text-slate-800 dark:text-white capitalize">
               {title === 'heading1' ? 'Heading 1 (Sections)' : title}
             </h4>
-            <p className="text-[11px] text-slate-400 font-medium">{description}</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">{description}</p>
           </div>
           <div>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-600 select-none">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-350 select-none">
               <input
                 type="checkbox"
                 checked={format.bold}
                 onChange={(e) => handleFormatChange(key, 'bold', e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-blue-600 dark:text-blue-500 focus:ring-blue-500 cursor-pointer"
               />
               Bold
             </label>
@@ -61,11 +61,11 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
           {/* Font Family */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Global Font Family</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Global Font Family</label>
             <select
               value={format.fontFamily}
               onChange={(e) => handleFormatChange(key, 'fontFamily', e.target.value)}
-              className="w-full text-xs font-semibold text-slate-700 bg-slate-55 border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 focus:bg-white transition"
+              className="w-full text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 dark:focus:border-blue-600 focus:bg-white dark:focus:bg-slate-900 transition"
               id={`font-family-${key}`}
             >
               {FONTS.map(f => (
@@ -76,25 +76,25 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
 
           {/* Font Size */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Font Size (PT)</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Font Size (PT)</label>
             <input
               type="number"
               min={6}
               max={72}
               value={format.fontSize}
               onChange={(e) => handleFormatChange(key, 'fontSize', parseInt(e.target.value) || 11)}
-              className="w-full text-xs font-semibold text-slate-700 bg-slate-55 border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 focus:bg-white transition"
+              className="w-full text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 dark:focus:border-blue-600 focus:bg-white dark:focus:bg-slate-900 transition"
               id={`font-size-${key}`}
             />
           </div>
 
           {/* Line Spacing */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Line Spacing</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Line Spacing</label>
             <select
               value={format.lineSpacing}
               onChange={(e) => handleFormatChange(key, 'lineSpacing', parseInt(e.target.value) || 100)}
-              className="w-full text-xs font-semibold text-slate-700 bg-slate-55 border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 focus:bg-white transition"
+              className="w-full text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 dark:focus:border-blue-600 focus:bg-white dark:focus:bg-slate-900 transition"
               id={`line-spacing-${key}`}
             >
               {LINE_SPACINGS.map(ls => (
@@ -106,7 +106,7 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
           {/* Margins */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1" title="Paragraph space before in points">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1" title="Paragraph space before in points">
                 Before (PT)
               </label>
               <input
@@ -115,12 +115,12 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
                 max={100}
                 value={format.spaceAbove}
                 onChange={(e) => handleFormatChange(key, 'spaceAbove', parseInt(e.target.value) || 0)}
-                className="w-full text-xs font-semibold text-slate-700 bg-slate-55 border border-slate-200 rounded-lg px-1.5 py-1.5 outline-none focus:border-blue-500 focus:bg-white text-center transition"
+                className="w-full text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-1.5 py-1.5 outline-none focus:border-blue-500 dark:focus:border-blue-600 focus:bg-white dark:focus:bg-slate-900 text-center transition"
                 id={`space-above-${key}`}
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1" title="Paragraph space after in points">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1" title="Paragraph space after in points">
                 After (PT)
               </label>
               <input
@@ -129,7 +129,7 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
                 max={100}
                 value={format.spaceBelow}
                 onChange={(e) => handleFormatChange(key, 'spaceBelow', parseInt(e.target.value) || 0)}
-                className="w-full text-xs font-semibold text-slate-700 bg-slate-55 border border-slate-200 rounded-lg px-1.5 py-1.5 outline-none focus:border-blue-500 focus:bg-white text-center transition"
+                className="w-full text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-55 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-1.5 py-1.5 outline-none focus:border-blue-500 dark:focus:border-blue-600 focus:bg-white dark:focus:bg-slate-900 text-center transition"
                 id={`space-below-${key}`}
               />
             </div>
@@ -140,19 +140,19 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
   };
 
   return (
-    <div className="bg-white border border-slate-200 p-6 rounded-2xl flex flex-col gap-5 shadow-sm" id="conversion-settings-panel">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl flex flex-col gap-5 shadow-sm transition-colors duration-200" id="conversion-settings-panel">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-3.5 flex-wrap gap-2">
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5 flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Settings className="w-5 h-5 text-slate-600" />
-          <h3 className="font-bold text-slate-800 text-sm">Google Docs Conversions Presets</h3>
+          <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+          <h3 className="font-bold text-slate-800 dark:text-white text-sm">Google Docs Conversions Presets</h3>
         </div>
         
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onResetSettings}
-            className="text-slate-500 hover:text-slate-800 hover:bg-slate-100 hover:shadow-sm px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition select-none"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:shadow-sm px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer transition select-none"
             id="btn-reset-defaults"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -170,9 +170,9 @@ export default function SettingsPanel({ settings, onUpdateSettings, onResetSetti
       </div>
 
       {/* Persistence Note */}
-      <div className="flex items-center justify-between mt-1 px-1 text-[11px] text-slate-400 font-medium">
+      <div className="flex items-center justify-between mt-1 px-1 text-[11px] text-slate-450 dark:text-slate-500 font-medium">
         <p className="flex items-center gap-1">
-          <Check className="w-3.5 h-3.5 text-emerald-500" />
+          <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
           Style settings are auto-saved to your browser.
         </p>
         <p className="hidden sm:block">Lines with list items format dynamically</p>
