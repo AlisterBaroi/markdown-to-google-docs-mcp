@@ -21,7 +21,8 @@ export interface ConversionSettings {
 
 export interface DocElement {
   text: string;
-  type: 'title' | 'heading1' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block';
+  type: 'title' | 'heading1' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block' | 'table';
+  tableRows?: string[][];
   bulleted?: boolean;
   bulletIndex?: number;
   isLastInList?: boolean;

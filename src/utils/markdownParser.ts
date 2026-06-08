@@ -148,7 +148,8 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
   const parsedLines: Array<{ 
     raw: string; 
     text: string; 
-    rawType: 'title' | 'heading1' | 'text' | 'bullet_list' | 'numbered_list' | 'horizontal_rule' | 'code_block'; 
+    rawType: 'title' | 'heading1' | 'text' | 'bullet_list' | 'numbered_list' | 'horizontal_rule' | 'code_block' | 'table';
+    tableRows?: string[][];
     links: { startIndex: number; endIndex: number; url: string }[];
     boldRanges: { startIndex: number; endIndex: number }[];
     italicRanges: { startIndex: number; endIndex: number }[];
@@ -160,6 +161,9 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
   
   let inCodeBlock = false;
   let codeBlockLines: string[] = [];
+  
+  let inTable = false;
+  let tableRows: string[][] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const originalLine = lines[i];
@@ -201,6 +205,36 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
         inFrontmatter = false;
         continue;
       }
+    }
+
+    // Match Table Row
+    const isTableRow = trimmedLine.startsWith('|') && trimmedLine.endsWith('|');
+    if (isTableRow) {
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      const isSeparator = /^\|[ \-:]+\|([ \-:]+\|)*$/.test(trimmedLine);
+      if (!isSeparator) {
+        const cells = trimmedLine
+          .slice(1, -1)
+          .split('|')
+          .map(c => {
+            const { cleaned } = stripMarkdownFormatting(c.trim());
+            return cleaned;
+          });
+        tableRows.push(cells);
+      }
+      continue;
+    } else if (inTable) {
+      inTable = false;
+      if (tableRows.length > 0) {
+        parsedLines.push({
+          raw: '', text: '', rawType: 'table', tableRows: tableRows,
+          links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+        });
+      }
+      tableRows = [];
     }
 
     // Match HR (---, ***, ___)
@@ -282,6 +316,14 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
     });
   }
 
+  // Handle unclosed table
+  if (inTable && tableRows.length > 0) {
+    parsedLines.push({
+      raw: '', text: '', rawType: 'table', tableRows: tableRows,
+      links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+    });
+  }
+
   // If we couldn't find a title, let's look for the first title-type line or fallback to defaultName
   if (!extractedTitle) {
     const firstTitleLine = parsedLines.find(l => l.rawType === 'title');
@@ -332,6 +374,13 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
       finalElements.push({
         text: current.text,
         type: 'code_block',
+        ...formatting
+      });
+    } else if (current.rawType === 'table') {
+      finalElements.push({
+        text: current.text,
+        type: 'table',
+        tableRows: current.tableRows,
         ...formatting
       });
     } else if (current.rawType === 'bullet_list' || current.rawType === 'numbered_list') {
