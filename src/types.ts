@@ -3,6 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export interface RGBColor {
+  red: number;
+  green: number;
+  blue: number;
+}
+
 export interface TextFormat {
   fontFamily: string;
   fontSize: number;
@@ -10,18 +16,43 @@ export interface TextFormat {
   spaceAbove: number;  // in points (PT)
   spaceBelow: number;  // in points (PT)
   bold: boolean;
+  color?: RGBColor;
+}
+
+export interface HeaderFooterSettings {
+  enabled: boolean;
+  text: string;
+  fontSize: number;
+  color: RGBColor;
+}
+
+export interface PageNumberSettings {
+  enabled: boolean;
+  fontSize: number;
+  color: RGBColor;
+}
+
+export interface HeadingMapping {
+  title: string;
+  heading1: string;
+  heading2: string;
 }
 
 export interface ConversionSettings {
   title: TextFormat;
   heading1: TextFormat;
+  heading2: TextFormat;
   text: TextFormat;
-  list: TextFormat; // list has a custom last-bullet spaceBelow of 8 programmatically
+  textBold: TextFormat;
+  textItalic: TextFormat;
+  textUnderline: TextFormat;
+  list: TextFormat;
+  headingMapping: HeadingMapping;
 }
 
 export interface DocElement {
   text: string;
-  type: 'title' | 'heading1' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block' | 'table';
+  type: 'title' | 'heading1' | 'heading2' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block' | 'table';
   tableRows?: string[][];
   bulleted?: boolean;
   bulletIndex?: number;
@@ -29,6 +60,7 @@ export interface DocElement {
   links?: { startIndex: number; endIndex: number; url: string }[];
   boldRanges?: { startIndex: number; endIndex: number }[];
   italicRanges?: { startIndex: number; endIndex: number }[];
+  underlineRanges?: { startIndex: number; endIndex: number }[];
   strikethroughRanges?: { startIndex: number; endIndex: number }[];
 }
 

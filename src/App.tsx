@@ -39,7 +39,8 @@ const DEFAULT_SETTINGS: ConversionSettings = {
     lineSpacing: 100, // standard line height
     spaceAbove: 0,
     spaceBelow: 3,
-    bold: true
+    bold: true,
+    color: { red: 0, green: 0, blue: 0 }
   },
   heading1: {
     fontFamily: 'Arial',
@@ -47,7 +48,17 @@ const DEFAULT_SETTINGS: ConversionSettings = {
     lineSpacing: 100,
     spaceAbove: 20,
     spaceBelow: 6,
-    bold: true
+    bold: true,
+    color: { red: 0, green: 0, blue: 0 }
+  },
+  heading2: {
+    fontFamily: 'Arial',
+    fontSize: 16,
+    lineSpacing: 100,
+    spaceAbove: 18,
+    spaceBelow: 4,
+    bold: true,
+    color: { red: 0, green: 0, blue: 0 }
   },
   text: {
     fontFamily: 'Arial',
@@ -55,7 +66,35 @@ const DEFAULT_SETTINGS: ConversionSettings = {
     lineSpacing: 100,
     spaceAbove: 0,
     spaceBelow: 8,
-    bold: false
+    bold: false,
+    color: { red: 0, green: 0, blue: 0 }
+  },
+  textBold: {
+    fontFamily: 'Arial',
+    fontSize: 11,
+    lineSpacing: 100,
+    spaceAbove: 0,
+    spaceBelow: 0,
+    bold: true,
+    color: { red: 0, green: 0, blue: 0 }
+  },
+  textItalic: {
+    fontFamily: 'Arial',
+    fontSize: 11,
+    lineSpacing: 100,
+    spaceAbove: 0,
+    spaceBelow: 0,
+    bold: false,
+    color: { red: 0.4, green: 0.4, blue: 0.4 } // dark gray 3
+  },
+  textUnderline: {
+    fontFamily: 'Arial',
+    fontSize: 11,
+    lineSpacing: 100,
+    spaceAbove: 0,
+    spaceBelow: 0,
+    bold: false,
+    color: { red: 0, green: 0, blue: 0 }
   },
   list: {
     fontFamily: 'Arial',
@@ -63,7 +102,13 @@ const DEFAULT_SETTINGS: ConversionSettings = {
     lineSpacing: 100,
     spaceAbove: 0,
     spaceBelow: 4, // Final bullet spaceBelow is 8pt handled programmatically in Docs Exporter
-    bold: false
+    bold: false,
+    color: { red: 0, green: 0, blue: 0 }
+  },
+  headingMapping: {
+    title: '#',
+    heading1: '##',
+    heading2: '###'
   }
 };
 
@@ -145,7 +190,15 @@ export default function App() {
     try {
       const storedSettings = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
       if (storedSettings) {
-        setSettings(JSON.parse(storedSettings));
+        const parsed = JSON.parse(storedSettings);
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          headingMapping: {
+            ...DEFAULT_SETTINGS.headingMapping,
+            ...(parsed.headingMapping || {})
+          }
+        });
       }
     } catch (err) {
       console.error('Failed to load settings from local storage:', err);
@@ -265,7 +318,7 @@ export default function App() {
 
       try {
         // 1. Parsing markdown line objects & headers
-        const parsed = parseMarkdown(file.content, file.name);
+        const parsed = parseMarkdown(file.content, file.name, settings.headingMapping);
 
         // 2. Provision empty Google Doc
         const documentId = await createBlankDoc(accessToken, parsed.title);

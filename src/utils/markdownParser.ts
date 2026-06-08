@@ -3,55 +3,73 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DocElement } from '../types';
+import { DocElement, HeadingMapping } from "../types";
 
 /**
  * Removes standard markdown markup like bold (**), italic (*), code blocks (`) and links [text](url)
  * to make the text clean for insertion into Google Docs, and extracts link positions.
  */
-function stripMarkdownFormatting(text: string): { 
-  cleaned: string; 
+function stripMarkdownFormatting(text: string): {
+  cleaned: string;
   links: { startIndex: number; endIndex: number; url: string }[];
   boldRanges: { startIndex: number; endIndex: number }[];
   italicRanges: { startIndex: number; endIndex: number }[];
+  underlineRanges: { startIndex: number; endIndex: number }[];
   strikethroughRanges: { startIndex: number; endIndex: number }[];
 } {
   let cleaned = text;
 
   const boldRanges: { startIndex: number; endIndex: number }[] = [];
   const italicRanges: { startIndex: number; endIndex: number }[] = [];
+  const underlineRanges: { startIndex: number; endIndex: number }[] = [];
   const strikethroughRanges: { startIndex: number; endIndex: number }[] = [];
   const links: { startIndex: number; endIndex: number; url: string }[] = [];
 
   const doReplace = (
-    regex: RegExp, 
-    onMatch: (match: RegExpExecArray, startIndex: number) => { replacement: string, newRanges: { type: string, start: number, end: number, data?: any }[] }
+    regex: RegExp,
+    onMatch: (
+      match: RegExpExecArray,
+      startIndex: number,
+    ) => {
+      replacement: string;
+      newRanges: { type: string; start: number; end: number; data?: any }[];
+    },
   ) => {
     let match;
     while ((match = regex.exec(cleaned)) !== null) {
       const startIndex = match.index;
       const { replacement, newRanges } = onMatch(match, startIndex);
       const lengthDiff = replacement.length - match[0].length;
-      
-      cleaned = cleaned.slice(0, startIndex) + replacement + cleaned.slice(startIndex + match[0].length);
-      
+
+      cleaned =
+        cleaned.slice(0, startIndex) +
+        replacement +
+        cleaned.slice(startIndex + match[0].length);
+
       const updateRange = (r: { startIndex: number; endIndex: number }) => {
         if (r.startIndex > startIndex) r.startIndex += lengthDiff;
         if (r.endIndex > startIndex) r.endIndex += lengthDiff;
       };
-      
+
       links.forEach(updateRange);
       boldRanges.forEach(updateRange);
       italicRanges.forEach(updateRange);
+      underlineRanges.forEach(updateRange);
       strikethroughRanges.forEach(updateRange);
 
-      newRanges.forEach(r => {
-        if (r.type === 'link') links.push({ startIndex: r.start, endIndex: r.end, url: r.data });
-        if (r.type === 'bold') boldRanges.push({ startIndex: r.start, endIndex: r.end });
-        if (r.type === 'italic') italicRanges.push({ startIndex: r.start, endIndex: r.end });
-        if (r.type === 'strikethrough') strikethroughRanges.push({ startIndex: r.start, endIndex: r.end });
+      newRanges.forEach((r) => {
+        if (r.type === "link")
+          links.push({ startIndex: r.start, endIndex: r.end, url: r.data });
+        if (r.type === "bold")
+          boldRanges.push({ startIndex: r.start, endIndex: r.end });
+        if (r.type === "italic")
+          italicRanges.push({ startIndex: r.start, endIndex: r.end });
+        if (r.type === "underline")
+          underlineRanges.push({ startIndex: r.start, endIndex: r.end });
+        if (r.type === "strikethrough")
+          strikethroughRanges.push({ startIndex: r.start, endIndex: r.end });
       });
-      
+
       regex.lastIndex = startIndex + replacement.length;
     }
   };
@@ -60,28 +78,39 @@ function stripMarkdownFormatting(text: string): {
   doReplace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, start) => {
     return {
       replacement: match[1],
-      newRanges: [{ type: 'link', start, end: start + match[1].length, data: match[2] }]
+      newRanges: [
+        { type: "link", start, end: start + match[1].length, data: match[2] },
+      ],
     };
   });
 
-  // bold italic ***text*** or ___text___
-  doReplace(/(\*\*\*|___)(.*?)\1/g, (match, start) => {
+  // bold italic ***text***
+  doReplace(/(\*\*\*)(.*?)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
       newRanges: [
-        { type: 'bold', start, end: start + textLen },
-        { type: 'italic', start, end: start + textLen }
-      ]
+        { type: "bold", start, end: start + textLen },
+        { type: "italic", start, end: start + textLen },
+      ],
     };
   });
 
-  // bold **text** or __text__
-  doReplace(/(\*\*|__)(.*?)\1/g, (match, start) => {
+  // bold **text**
+  doReplace(/(\*\*)(.*?)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
-      newRanges: [{ type: 'bold', start, end: start + textLen }]
+      newRanges: [{ type: "bold", start, end: start + textLen }],
+    };
+  });
+
+  // underline __text__
+  doReplace(/(__)(.*?)\1/g, (match, start) => {
+    const textLen = match[2].length;
+    return {
+      replacement: match[2],
+      newRanges: [{ type: "underline", start, end: start + textLen }],
     };
   });
 
@@ -90,7 +119,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[2].length;
     return {
       replacement: match[2],
-      newRanges: [{ type: 'italic', start, end: start + textLen }]
+      newRanges: [{ type: "italic", start, end: start + textLen }],
     };
   });
 
@@ -99,7 +128,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[1].length;
     return {
       replacement: match[1],
-      newRanges: [{ type: 'strikethrough', start, end: start + textLen }]
+      newRanges: [{ type: "strikethrough", start, end: start + textLen }],
     };
   });
 
@@ -107,13 +136,13 @@ function stripMarkdownFormatting(text: string): {
   doReplace(/`([^`]+)`/g, (match, start) => {
     return {
       replacement: match[1],
-      newRanges: []
+      newRanges: [],
     };
   });
 
   const leadingSpacesMatch = cleaned.match(/^\s+/);
   const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[0].length : 0;
-  
+
   if (leadingSpaces > 0) {
     const shiftRange = (r: { startIndex: number; endIndex: number }) => {
       r.startIndex = Math.max(0, r.startIndex - leadingSpaces);
@@ -135,51 +164,93 @@ function stripMarkdownFormatting(text: string): {
   italicRanges.forEach(capRange);
   strikethroughRanges.forEach(capRange);
 
-  return { cleaned: trimmed, links, boldRanges, italicRanges, strikethroughRanges };
+  // Return signature addition
+  return {
+    cleaned: trimmed,
+    links,
+    boldRanges,
+    italicRanges,
+    underlineRanges,
+    strikethroughRanges,
+  };
 }
 
-/**
- * Parses markdown text into DocElements with type tags
- */
-export function parseMarkdown(markdown: string, defaultName: string = 'Untitled Blog Post'): { title: string; elements: DocElement[] } {
+export function parseMarkdown(
+  markdown: string,
+  defaultName: string = "Untitled Blog Post",
+  headingMapping?: HeadingMapping,
+): { title: string; elements: DocElement[] } {
   const lines = markdown.split(/\r?\n/);
-  
-  let extractedTitle = '';
-  const parsedLines: Array<{ 
-    raw: string; 
-    text: string; 
-    rawType: 'title' | 'heading1' | 'text' | 'bullet_list' | 'numbered_list' | 'horizontal_rule' | 'code_block' | 'table';
+
+  let extractedTitle = "";
+  const parsedLines: Array<{
+    raw: string;
+    text: string;
+    rawType:
+      | "title"
+      | "heading1"
+      | "heading2"
+      | "text"
+      | "bullet_list"
+      | "numbered_list"
+      | "horizontal_rule"
+      | "code_block"
+      | "table";
     tableRows?: string[][];
     links: { startIndex: number; endIndex: number; url: string }[];
     boldRanges: { startIndex: number; endIndex: number }[];
     italicRanges: { startIndex: number; endIndex: number }[];
+    underlineRanges: { startIndex: number; endIndex: number }[];
     strikethroughRanges: { startIndex: number; endIndex: number }[];
   }> = [];
-  
+
   let inFrontmatter = false;
   let hasParsedTitle = false;
-  
+
   let inCodeBlock = false;
   let codeBlockLines: string[] = [];
-  
+
   let inTable = false;
   let tableRows: string[][] = [];
+
+  const getHeadingType = (
+    poundString: string,
+  ): "title" | "heading1" | "heading2" | null => {
+    if (
+      !headingMapping ||
+      !headingMapping.title ||
+      !headingMapping.heading1 ||
+      !headingMapping.heading2
+    ) {
+      if (poundString === "#") return "title";
+      if (poundString === "##") return "heading1";
+      return "heading2"; // fallback
+    }
+    if (headingMapping.title === poundString && !hasParsedTitle) return "title";
+    if (headingMapping.heading1 === poundString) return "heading1";
+    if (headingMapping.heading2 === poundString) return "heading2";
+    return null;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const originalLine = lines[i];
     const trimmedLine = originalLine.trim();
 
     // Parse Code blocks
-    if (trimmedLine.startsWith('```')) {
+    if (trimmedLine.startsWith("```")) {
       if (inCodeBlock) {
         // End of code block
         inCodeBlock = false;
         codeBlockLines.push(originalLine);
         parsedLines.push({
-          raw: codeBlockLines.join('\n'),
-          text: codeBlockLines.join('\n'),
-          rawType: 'code_block',
-          links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+          raw: codeBlockLines.join("\n"),
+          text: codeBlockLines.join("\n"),
+          rawType: "code_block",
+          links: [],
+          boldRanges: [],
+          italicRanges: [],
+          underlineRanges: [],
+          strikethroughRanges: [],
         });
         codeBlockLines = [];
         continue;
@@ -197,7 +268,7 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
     }
 
     // Parse Frontmatter if exists
-    if (trimmedLine === '---') {
+    if (trimmedLine === "---") {
       if (!inFrontmatter && i === 0) {
         inFrontmatter = true;
         continue;
@@ -208,7 +279,7 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
     }
 
     // Match Table Row
-    const isTableRow = trimmedLine.startsWith('|') && trimmedLine.endsWith('|');
+    const isTableRow = trimmedLine.startsWith("|") && trimmedLine.endsWith("|");
     if (isTableRow) {
       if (!inTable) {
         inTable = true;
@@ -218,8 +289,8 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
       if (!isSeparator) {
         const cells = trimmedLine
           .slice(1, -1)
-          .split('|')
-          .map(c => {
+          .split("|")
+          .map((c) => {
             const { cleaned } = stripMarkdownFormatting(c.trim());
             return cleaned;
           });
@@ -230,8 +301,15 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
       inTable = false;
       if (tableRows.length > 0) {
         parsedLines.push({
-          raw: '', text: '', rawType: 'table', tableRows: tableRows,
-          links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+          raw: "",
+          text: "",
+          rawType: "table",
+          tableRows: tableRows,
+          links: [],
+          boldRanges: [],
+          italicRanges: [],
+          underlineRanges: [],
+          strikethroughRanges: [],
         });
       }
       tableRows = [];
@@ -239,11 +317,15 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
 
     // Match HR (---, ***, ___)
     if (/^[-*_]{3,}\s*$/.test(trimmedLine)) {
-      parsedLines.push({ 
-        raw: originalLine, 
-        text: '__________________________________________________', 
-        rawType: 'horizontal_rule', 
-        links: [], boldRanges: [], italicRanges: [], strikethroughRanges: [] 
+      parsedLines.push({
+        raw: originalLine,
+        text: "__________________________________________________",
+        rawType: "horizontal_rule",
+        links: [],
+        boldRanges: [],
+        italicRanges: [],
+        underlineRanges: [],
+        strikethroughRanges: [],
       });
       continue;
     }
@@ -251,86 +333,201 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
     if (inFrontmatter) {
       const match = trimmedLine.match(/^title:\s*(.*)$/i);
       if (match) {
-        extractedTitle = match[1].replace(/['"]/g, '').trim();
+        extractedTitle = match[1].replace(/['"]/g, "").trim();
       }
       continue;
     }
 
     // Skip empty lines in layout structure mapping, but they count to end elements
-    if (trimmedLine === '') {
+    if (trimmedLine === "") {
       continue;
     }
 
-    // Match Header 1 (#)
-    const h1Match = trimmedLine.match(/^#\s+(.*)$/);
-    if (h1Match) {
-      const { cleaned: content, links, boldRanges, italicRanges, strikethroughRanges } = stripMarkdownFormatting(h1Match[1]);
-      if (!extractedTitle && !hasParsedTitle) {
-        extractedTitle = content;
-        hasParsedTitle = true;
-        parsedLines.push({ raw: originalLine, text: content, rawType: 'title', links, boldRanges, italicRanges, strikethroughRanges });
+    // Match Headers
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      const {
+        cleaned: content,
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      } = stripMarkdownFormatting(headingMatch[2]);
+      const headingType = getHeadingType(headingMatch[1]);
+
+      if (headingType === "title") {
+        if (!extractedTitle && !hasParsedTitle) {
+          extractedTitle = content;
+          hasParsedTitle = true;
+          parsedLines.push({
+            raw: originalLine,
+            text: content,
+            rawType: "title",
+            links,
+            boldRanges,
+            italicRanges,
+            underlineRanges,
+            strikethroughRanges,
+          });
+        } else {
+          // fallback to heading1 if title already consumed
+          parsedLines.push({
+            raw: originalLine,
+            text: content,
+            rawType: "heading1",
+            links,
+            boldRanges,
+            italicRanges,
+            underlineRanges,
+            strikethroughRanges,
+          });
+        }
+      } else if (headingType === "heading1") {
+        parsedLines.push({
+          raw: originalLine,
+          text: content,
+          rawType: "heading1",
+          links,
+          boldRanges,
+          italicRanges,
+          underlineRanges,
+          strikethroughRanges,
+        });
+      } else if (headingType === "heading2") {
+        parsedLines.push({
+          raw: originalLine,
+          text: content,
+          rawType: "heading2",
+          links,
+          boldRanges,
+          italicRanges,
+          underlineRanges,
+          strikethroughRanges,
+        });
       } else {
-        parsedLines.push({ raw: originalLine, text: content, rawType: 'heading1', links, boldRanges, italicRanges, strikethroughRanges });
+        // Fallback or unmapped heading, treat as generic text or heading2 for backward compatibility
+        parsedLines.push({
+          raw: originalLine,
+          text: content,
+          rawType: "heading2",
+          links,
+          boldRanges,
+          italicRanges,
+          underlineRanges,
+          strikethroughRanges,
+        });
       }
-      continue;
-    }
-
-    // Match other Headers (##, ###, etc.) -> all maps to heading1 style for this requirements
-    const hNextMatch = trimmedLine.match(/^#{2,6}\s+(.*)$/);
-    if (hNextMatch) {
-      const { cleaned: content, links, boldRanges, italicRanges, strikethroughRanges } = stripMarkdownFormatting(hNextMatch[1]);
-      parsedLines.push({ raw: originalLine, text: content, rawType: 'heading1', links, boldRanges, italicRanges, strikethroughRanges });
       continue;
     }
 
     // Match Bullet List (- item, * item, + item)
     const bulletMatch = trimmedLine.match(/^[-*+]\s+(.*)$/);
     if (bulletMatch) {
-      const { cleaned: content, links, boldRanges, italicRanges, strikethroughRanges } = stripMarkdownFormatting(bulletMatch[1]);
-      parsedLines.push({ raw: originalLine, text: content, rawType: 'bullet_list', links, boldRanges, italicRanges, strikethroughRanges });
+      const {
+        cleaned: content,
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      } = stripMarkdownFormatting(bulletMatch[1]);
+      parsedLines.push({
+        raw: originalLine,
+        text: content,
+        rawType: "bullet_list",
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      });
       continue;
     }
 
     // Match Numbered List (1. item, 2. item)
     const numberedMatch = trimmedLine.match(/^\d+\.\s+(.*)$/);
     if (numberedMatch) {
-      const { cleaned: content, links, boldRanges, italicRanges, strikethroughRanges } = stripMarkdownFormatting(numberedMatch[1]);
-      parsedLines.push({ raw: originalLine, text: content, rawType: 'numbered_list', links, boldRanges, italicRanges, strikethroughRanges });
+      const {
+        cleaned: content,
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      } = stripMarkdownFormatting(numberedMatch[1]);
+      parsedLines.push({
+        raw: originalLine,
+        text: content,
+        rawType: "numbered_list",
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      });
       continue;
     }
 
     // Default: normal text paragraph
-    const { cleaned: content, links, boldRanges, italicRanges, strikethroughRanges } = stripMarkdownFormatting(originalLine);
+    const {
+      cleaned: content,
+      links,
+      boldRanges,
+      italicRanges,
+      underlineRanges,
+      strikethroughRanges,
+    } = stripMarkdownFormatting(originalLine);
     if (content) {
-      parsedLines.push({ raw: originalLine, text: content, rawType: 'text', links, boldRanges, italicRanges, strikethroughRanges });
+      parsedLines.push({
+        raw: originalLine,
+        text: content,
+        rawType: "text",
+        links,
+        boldRanges,
+        italicRanges,
+        underlineRanges,
+        strikethroughRanges,
+      });
     }
   }
 
   // Handle unclosed code block
   if (inCodeBlock && codeBlockLines.length > 0) {
     parsedLines.push({
-      raw: codeBlockLines.join('\n'),
-      text: codeBlockLines.join('\n'),
-      rawType: 'code_block',
-      links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+      raw: codeBlockLines.join("\n"),
+      text: codeBlockLines.join("\n"),
+      rawType: "code_block",
+      links: [],
+      boldRanges: [],
+      italicRanges: [],
+      underlineRanges: [],
+      strikethroughRanges: [],
     });
   }
 
   // Handle unclosed table
   if (inTable && tableRows.length > 0) {
     parsedLines.push({
-      raw: '', text: '', rawType: 'table', tableRows: tableRows,
-      links: [], boldRanges: [], italicRanges: [], strikethroughRanges: []
+      raw: "",
+      text: "",
+      rawType: "table",
+      tableRows: tableRows,
+      links: [],
+      boldRanges: [],
+      italicRanges: [],
+      underlineRanges: [],
+      strikethroughRanges: [],
     });
   }
 
   // If we couldn't find a title, let's look for the first title-type line or fallback to defaultName
   if (!extractedTitle) {
-    const firstTitleLine = parsedLines.find(l => l.rawType === 'title');
+    const firstTitleLine = parsedLines.find((l) => l.rawType === "title");
     if (firstTitleLine) {
       extractedTitle = firstTitleLine.text;
     } else {
-      extractedTitle = defaultName.replace(/\.md$/i, '');
+      extractedTitle = defaultName.replace(/\.md$/i, "");
     }
   }
 
@@ -343,53 +540,63 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
       links: current.links,
       boldRanges: current.boldRanges,
       italicRanges: current.italicRanges,
-      strikethroughRanges: current.strikethroughRanges
+      underlineRanges: current.underlineRanges,
+      strikethroughRanges: current.strikethroughRanges,
     };
 
-    if (current.rawType === 'title') {
+    if (current.rawType === "title") {
       finalElements.push({
         text: current.text,
-        type: 'title',
-        ...formatting
+        type: "title",
+        ...formatting,
       });
-    } else if (current.rawType === 'heading1') {
+    } else if (current.rawType === "heading1") {
       finalElements.push({
         text: current.text,
-        type: 'heading1',
-        ...formatting
+        type: "heading1",
+        ...formatting,
       });
-    } else if (current.rawType === 'horizontal_rule') {
-      finalElements.push({
-        text: ' ',
-        type: 'horizontal_rule',
-        ...formatting
-      });
-    } else if (current.rawType === 'text') {
+    } else if (current.rawType === "heading2") {
       finalElements.push({
         text: current.text,
-        type: 'text',
-        ...formatting
+        type: "heading2",
+        ...formatting,
       });
-    } else if (current.rawType === 'code_block') {
+    } else if (current.rawType === "horizontal_rule") {
+      finalElements.push({
+        text: " ",
+        type: "horizontal_rule",
+        ...formatting,
+      });
+    } else if (current.rawType === "text") {
       finalElements.push({
         text: current.text,
-        type: 'code_block',
-        ...formatting
+        type: "text",
+        ...formatting,
       });
-    } else if (current.rawType === 'table') {
+    } else if (current.rawType === "code_block") {
       finalElements.push({
         text: current.text,
-        type: 'table',
+        type: "code_block",
+        ...formatting,
+      });
+    } else if (current.rawType === "table") {
+      finalElements.push({
+        text: current.text,
+        type: "table",
         tableRows: current.tableRows,
-        ...formatting
+        ...formatting,
       });
-    } else if (current.rawType === 'bullet_list' || current.rawType === 'numbered_list') {
-      const isBulleted = current.rawType === 'bullet_list';
-      
+    } else if (
+      current.rawType === "bullet_list" ||
+      current.rawType === "numbered_list"
+    ) {
+      const isBulleted = current.rawType === "bullet_list";
+
       // Look ahead to check if this is the last list item of this type in a contiguous block
       let isLast = true;
       let nextIdx = idx + 1;
-      
+
       // If there's a subsequent line, and it is a list item of the same type, then this is not the last
       if (nextIdx < parsedLines.length) {
         const next = parsedLines[nextIdx];
@@ -400,16 +607,16 @@ export function parseMarkdown(markdown: string, defaultName: string = 'Untitled 
 
       finalElements.push({
         text: current.text,
-        type: 'list_item',
+        type: "list_item",
         bulleted: isBulleted,
         isLastInList: isLast,
-        ...formatting
+        ...formatting,
       });
     }
   }
 
   return {
     title: extractedTitle,
-    elements: finalElements
+    elements: finalElements,
   };
 }
