@@ -13,7 +13,7 @@ We currently provide security updates and support for the latest branch/version 
 
 We take the security of our application and user data extremely seriously. 
 
-If you discover a security vulnerability within this project, please send an e-mail directly to the project maintainer at **alister@tigera.io**. 
+If you discover a security vulnerability within this project, please send an e-mail directly to the project maintainer at **alister.baroi@gmail.com**. 
 
 Please include the following details in your report to help us understand and resolve the issue quickly:
 * A descriptive overview of the vulnerability.
