@@ -52,7 +52,7 @@ export interface ConversionSettings {
 
 export interface DocElement {
   text: string;
-  type: 'title' | 'heading1' | 'heading2' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block' | 'table';
+  type: 'title' | 'heading1' | 'heading2' | 'text' | 'list_item' | 'horizontal_rule' | 'code_block' | 'table' | 'mermaid';
   tableRows?: string[][];
   bulleted?: boolean;
   bulletIndex?: number;
@@ -62,6 +62,11 @@ export interface DocElement {
   italicRanges?: { startIndex: number; endIndex: number }[];
   underlineRanges?: { startIndex: number; endIndex: number }[];
   strikethroughRanges?: { startIndex: number; endIndex: number }[];
+  // For 'mermaid' elements: `text` holds the diagram source. After rendering, these are
+  // populated with the publicly-fetchable PNG URL (for Docs insertInlineImage) and its pixel size.
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface DriveFolder {

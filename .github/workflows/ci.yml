@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # .puppeteerrc.cjs sets skipDownload, so this stays fast (no Chromium pull).
+      - name: Install dependencies
+        run: npm ci
+
+      # Builds the client (Vite) and bundles the server (esbuild) — catches type/bundle errors.
+      - name: Build
+        run: npm run build
+
+      # Parser unit tests + server E2E (spawns the built dist/server.cjs).
+      - name: Test
+        run: npm test

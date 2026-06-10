@@ -12,9 +12,10 @@ interface FolderSelectorProps {
   accessToken: string | null;
   onSelectFolder: (folderId: string, folderName: string, fullPath: string) => void;
   selectedFolderId: string;
+  onTokenExpired?: () => Promise<string | null>;
 }
 
-export default function FolderSelector({ accessToken, onSelectFolder, selectedFolderId }: FolderSelectorProps) {
+export default function FolderSelector({ accessToken, onSelectFolder, selectedFolderId, onTokenExpired }: FolderSelectorProps) {
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +49,16 @@ export default function FolderSelector({ accessToken, onSelectFolder, selectedFo
         query
       )}&fields=files(id,name,parents)&orderBy=name&pageSize=50`;
 
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const doFetch = (token: string) =>
+        fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
+      let res = await doFetch(accessToken);
+
+      // Token likely expired (~1h lifetime) — refresh silently once and retry.
+      if (res.status === 401 && onTokenExpired) {
+        const fresh = await onTokenExpired();
+        if (fresh) res = await doFetch(fresh);
+      }
 
       if (!res.ok) {
         throw new Error('Failed to retrieve folders from Google Drive.');

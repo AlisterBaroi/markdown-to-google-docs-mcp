@@ -11,6 +11,7 @@ import { createBlankDoc, styleDocContent, moveFileToFolder } from "./src/utils/d
 import { ConversionSettings } from "./src/types";
 import fs from "fs";
 import os from "os";
+import crypto from "crypto";
 
 // Stored OUTSIDE the project tree on purpose: it holds live OAuth access tokens
 // (never commit it), and keeping it out of the Vite-watched root avoids a
@@ -143,6 +144,73 @@ const DEFAULT_SETTINGS: ConversionSettings = {
   }
 };
 
+// --- Server-side mermaid rendering (for the MCP path) ---
+// Renders locally via headless Chrome so diagram source never leaves the host. Puppeteer is
+// loaded dynamically and optionally: if it isn't installed, rendering is skipped and the
+// exporter falls back to showing the diagram source as text. To enable, `npm i puppeteer`
+// and ensure Chromium is available (see Dockerfile notes).
+let puppeteerBrowser: any = null;
+async function getPuppeteerBrowser(): Promise<any | null> {
+  try {
+    // Non-literal specifier so the bundler/type-checker doesn't require puppeteer at build time.
+    const moduleName = "puppeteer";
+    const mod: any = await import(moduleName);
+    const puppeteer = mod.default || mod;
+    if (!puppeteerBrowser || !puppeteerBrowser.isConnected?.()) {
+      puppeteerBrowser = await puppeteer.launch({
+        headless: true,
+        // Use the system Chromium (installed in the Docker image) when provided.
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      });
+    }
+    return puppeteerBrowser;
+  } catch (err) {
+    console.warn("[MCP Server] Puppeteer unavailable; mermaid diagrams will not be rendered server-side:", (err as any)?.message || err);
+    return null;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function renderMermaidPngServerSide(
+  code: string,
+): Promise<{ png: Buffer; width: number; height: number } | null> {
+  const browser = await getPuppeteerBrowser();
+  if (!browser) return null;
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
+    // Loads the mermaid library (not the diagram) from a CDN, pinned to an exact version;
+    // rendering happens locally in this isolated page. Hardening TODO: self-host the dist or
+    // add an integrity="sha384-..." SRI hash (requires pinning, which we now do).
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js" crossorigin="anonymous"></script>
+</head><body style="margin:0;background:#fff;">
+<div class="mermaid">${escapeHtml(code)}</div>
+<script>mermaid.initialize({ startOnLoad: true, securityLevel: "strict" });</script>
+</body></html>`;
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.waitForSelector(".mermaid svg", { timeout: 15000 });
+    const el = await page.$(".mermaid svg");
+    if (!el) return null;
+    const box = await el.boundingBox();
+    const png = (await el.screenshot({ type: "png" })) as Buffer;
+    return {
+      png: Buffer.from(png),
+      width: Math.round(box?.width || 600),
+      height: Math.round(box?.height || 400),
+    };
+  } catch (err) {
+    console.error("[MCP Server] Mermaid render failed:", (err as any)?.message || err);
+    return null;
+  } finally {
+    await page.close();
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -198,6 +266,61 @@ async function startServer() {
       .sort((a, b) => a.connectedAt - b.connectedAt);
 
     res.json({ agents });
+  });
+
+  // --- Rendered mermaid diagram hosting ---
+  // Google Docs can only embed an image via a public URL it fetches once. We render the
+  // diagram (in the browser for the web app, server-side for MCP), park the PNG here under
+  // an unguessable id with a short TTL, hand the URL to Docs, then let it expire.
+  const mermaidImages = new Map<string, { png: Buffer; createdAt: number }>();
+  const MERMAID_IMAGE_TTL_MS = 10 * 60 * 1000;
+
+  const publicBaseUrl = (req: express.Request) => {
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const host = req.headers["x-forwarded-host"] || req.get("host") || `localhost:${PORT}`;
+    return `${protocol}://${host}`;
+  };
+
+  // Store a PNG and return a short-lived public URL. Exported for server-side rendering too.
+  const storeMermaidImage = (png: Buffer, req: express.Request): string => {
+    const now = Date.now();
+    for (const [id, v] of mermaidImages.entries()) {
+      if (now - v.createdAt > MERMAID_IMAGE_TTL_MS) mermaidImages.delete(id);
+    }
+    const id = crypto.randomBytes(16).toString("hex");
+    mermaidImages.set(id, { png, createdAt: now });
+    return `${publicBaseUrl(req)}/api/mermaid/${id}.png`;
+  };
+
+  // Web client uploads its browser-rendered PNG here; returns the public URL to embed.
+  app.post("/api/mermaid", express.raw({ type: "image/png", limit: "10mb" }), (req, res) => {
+    const body = req.body as Buffer;
+    if (!body || !body.length) {
+      return res.status(400).json({ error: "Missing PNG image body" });
+    }
+    const url = storeMermaidImage(body, req);
+    res.json({ url });
+  });
+
+  // Public, unauthenticated fetch endpoint — Google Docs' servers pull the image from here.
+  app.get("/api/mermaid/:id", (req, res) => {
+    const id = (req.params.id || "").replace(/\.png$/i, "");
+    const entry = mermaidImages.get(id);
+    if (!entry) {
+      return res.status(404).send("Image not found or expired");
+    }
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=600");
+    res.send(entry.png);
+  });
+
+  // Explicit cleanup: called once Google Docs has embedded (copied) the image, so it no
+  // longer needs to be hosted. The TTL sweep is only a backstop for this.
+  app.delete("/api/mermaid/:id", (req, res) => {
+    const id = (req.params.id || "").replace(/\.png$/i, "");
+    const existed = mermaidImages.delete(id);
+    console.log(`[MCP Server] Mermaid image cleanup for ${id}: ${existed ? "deleted" : "not found"}`);
+    res.json({ deleted: existed });
   });
 
   // Dynamic Javascript bridge script to expose Remote SSE MCP to Stdio Clients
@@ -607,6 +730,20 @@ async function sendMessage(line) {
             const parsed = parseMarkdown(markdown, titleName, settings.headingMapping);
             console.log(`[MCP Server] Parse finished! Found title: "${parsed.title}", Elements count: ${parsed.elements.length}`);
 
+            // Render any mermaid diagrams to hosted images (best-effort; falls back to source text)
+            for (const el of parsed.elements) {
+              if (el.type !== "mermaid" || !el.text.trim()) continue;
+              const rendered = await renderMermaidPngServerSide(el.text);
+              if (rendered) {
+                el.imageUrl = storeMermaidImage(rendered.png, req);
+                el.imageWidth = rendered.width;
+                el.imageHeight = rendered.height;
+                console.log(`[MCP Server] Rendered mermaid diagram -> ${el.imageUrl}`);
+              } else {
+                console.warn("[MCP Server] Mermaid diagram not rendered; leaving source as text.");
+              }
+            }
+
             // Construct new clean Google Doc
             console.log("[MCP Server] Initializing new blank Google Document in standard Cloud Workspace...");
             const documentId = await createBlankDoc(accessToken, parsed.title);
@@ -614,7 +751,7 @@ async function sendMessage(line) {
 
             // Style content and headers dynamically
             console.log("[MCP Server] Styling document structures and applying format templates...");
-            await styleDocContent(accessToken, documentId, parsed.elements, settings);
+            const styleResult = await styleDocContent(accessToken, documentId, parsed.elements, settings);
             console.log("[MCP Server] Formatting rules applied successfully!");
 
             // Move final styled documents in root Google Drive (default root)
@@ -631,7 +768,10 @@ async function sendMessage(line) {
                 content: [
                   {
                     type: "text",
-                    text: `Successfully converted Markdown to Google Doc!\n\nDocument Title: ${parsed.title}\nGoogle Doc URL: ${docUrl}\nSaved in: My Drive (Root)`
+                    text: `Successfully converted Markdown to Google Doc!\n\nDocument Title: ${parsed.title}\nGoogle Doc URL: ${docUrl}\nSaved in: My Drive (Root)` +
+                      (styleResult.mermaidEmbedFailed > 0
+                        ? `\n\nNote: ${styleResult.mermaidEmbedFailed} mermaid diagram(s) could not be embedded (Google could not fetch the rendered image — the server may not be publicly reachable). Their source was left in the document.`
+                        : "")
                   }
                 ]
               }

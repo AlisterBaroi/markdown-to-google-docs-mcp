@@ -118,8 +118,8 @@ export async function styleDocContent(
   documentId: string,
   elements: DocElement[],
   settings: ConversionSettings,
-) {
-  if (elements.length === 0) return;
+): Promise<{ mermaidEmbedFailed: number }> {
+  if (elements.length === 0) return { mermaidEmbedFailed: 0 };
 
   // 1. Group contiguous list items to apply native lists successfully
   const groupedElements: any[] = [];
@@ -165,6 +165,15 @@ export async function styleDocContent(
           rows,
           columns: cols,
           ...location,
+        },
+      });
+    } else if (group.type === "mermaid" && group.imageUrl) {
+      // Empty placeholder paragraph; the rendered diagram image is inserted into it later
+      // (Batch 3), once we know its real index. Falls through to text if rendering failed.
+      insertRequests.push({
+        insertText: {
+          ...location,
+          text: "\n",
         },
       });
     } else {
@@ -640,22 +649,28 @@ export async function styleDocContent(
         console.warn(`[DEBUG] Block for non-table/list (type=${group.type}) is NULL!`);
       }
       if (block && block.paragraph) {
-        const start = block.startIndex;
-        const end = block.endIndex - 1; // omit the trailing newline
+        // Image mermaids are styled+filled in Batch 3 (after re-fetching indices); the
+        // placeholder paragraph just needs its slot here to keep block alignment.
+        if (group.type === "mermaid" && group.imageUrl) {
+          // intentionally no styling here
+        } else {
+          const start = block.startIndex;
+          const end = block.endIndex - 1; // omit the trailing newline
 
-        // Prevent bullet leaks
-        requests.push({
-          deleteParagraphBullets: {
-            range: { startIndex: start, endIndex: block.endIndex },
-          },
-        });
+          // Prevent bullet leaks
+          requests.push({
+            deleteParagraphBullets: {
+              range: { startIndex: start, endIndex: block.endIndex },
+            },
+          });
 
-        let key = "text";
-        if (group.type === "title") key = "title";
-        else if (group.type === "heading1") key = "heading1";
-        else if (group.type === "heading2") key = "heading2";
+          let key = "text";
+          if (group.type === "title") key = "title";
+          else if (group.type === "heading1") key = "heading1";
+          else if (group.type === "heading2") key = "heading2";
 
-        addTextStyles(group, start, end, key);
+          addTextStyles(group, start, end, key);
+        }
       }
     }
   }
@@ -693,4 +708,116 @@ export async function styleDocContent(
   } else {
     console.log("[DEBUG] No formatting/insert requests generated.");
   }
+
+  // Step 3: insert rendered mermaid diagram images into their placeholder paragraphs.
+  // Done last with freshly re-fetched indices (Batch 2's cell inserts shift positions),
+  // and images inserted in descending index order so earlier inserts don't move later ones.
+  const hasImages = groupedElements.some(
+    (g: any) => g.type === "mermaid" && g.imageUrl
+  );
+  if (!hasImages) return { mermaidEmbedFailed: 0 };
+
+  const meta2Res = await fetch(
+    `https://docs.googleapis.com/v1/documents/${documentId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!meta2Res.ok) {
+    throw new Error("Failed to retrieve document metadata for image placement");
+  }
+  const meta2 = await meta2Res.json();
+  const blocks2 = (meta2.body?.content || []).filter(
+    (el: any) => el.paragraph || el.table
+  );
+
+  // Page content width is ~468pt (Letter, 1in margins). Cap diagrams to that, keep aspect ratio.
+  const MAX_WIDTH_PT = 450;
+  const pxToPt = (px: number) => px * 0.75; // 96dpi -> pt
+
+  const imageRequests: { index: number; requests: any[] }[] = [];
+  const insertedUrls: string[] = [];
+  for (let i = 0; i < groupedElements.length && i < blocks2.length; i++) {
+    const group = groupedElements[i];
+    const block = blocks2[i];
+    if (group.type !== "mermaid" || !group.imageUrl || !block.paragraph) continue;
+    insertedUrls.push(group.imageUrl);
+
+    let widthPt = pxToPt(group.imageWidth || 600);
+    let heightPt = pxToPt(group.imageHeight || 400);
+    if (widthPt > MAX_WIDTH_PT) {
+      const scale = MAX_WIDTH_PT / widthPt;
+      widthPt = MAX_WIDTH_PT;
+      heightPt = heightPt * scale;
+    }
+
+    const startIndex = block.startIndex;
+    imageRequests.push({
+      index: startIndex,
+      requests: [
+        {
+          updateParagraphStyle: {
+            paragraphStyle: { alignment: "CENTER" },
+            fields: "alignment",
+            range: { startIndex, endIndex: block.endIndex },
+          },
+        },
+        {
+          insertInlineImage: {
+            location: { index: startIndex },
+            uri: group.imageUrl,
+            objectSize: {
+              height: { magnitude: heightPt, unit: "PT" },
+              width: { magnitude: widthPt, unit: "PT" },
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  if (imageRequests.length === 0) return { mermaidEmbedFailed: 0 };
+
+  // Once these images are hosted no longer needed, delete them from the app server. Google
+  // copies the bytes into the Doc synchronously during the insert batch, so it's safe to
+  // delete right after the call returns (success or failure). TTL sweep is the backstop.
+  const cleanupHostedImages = async () => {
+    await Promise.all(
+      insertedUrls.map((u) =>
+        fetch(u, { method: "DELETE" }).catch(() => {
+          /* best-effort; the server's TTL will reclaim it anyway */
+        })
+      )
+    );
+  };
+
+  // Alignment requests don't shift indices; image inserts do — so emit all alignment
+  // updates first, then the inserts in descending index order.
+  imageRequests.sort((a, b) => b.index - a.index);
+  const alignReqs = imageRequests.flatMap((p) => p.requests.filter((r) => r.updateParagraphStyle));
+  const insertReqs = imageRequests.flatMap((p) => p.requests.filter((r) => r.insertInlineImage));
+  const imageBatch = [...alignReqs, ...insertReqs];
+
+  const imgRes = await fetch(
+    `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests: imageBatch }),
+    }
+  );
+
+  if (!imgRes.ok) {
+    // Non-fatal: the document is already built. The most common cause is Google being
+    // unable to fetch the image URL (e.g. a localhost dev server it can't reach), so we
+    // log and leave the placeholder rather than failing the whole conversion.
+    const errText = await imgRes.text();
+    console.error("Mermaid image insertion failed (diagrams left blank):", errText);
+    await cleanupHostedImages();
+    return { mermaidEmbedFailed: imageRequests.length };
+  }
+  console.log("[DEBUG] Mermaid image insertion succeeded!");
+  await cleanupHostedImages();
+  return { mermaidEmbedFailed: 0 };
 }

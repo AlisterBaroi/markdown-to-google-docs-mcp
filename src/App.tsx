@@ -23,9 +23,10 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 
-import { initAuth, googleSignIn, logout } from './utils/firebaseAuth';
+import { initAuth, googleSignIn, logout, refreshAccessTokenSilently, getValidAccessToken } from './utils/firebaseAuth';
 import { parseMarkdown } from './utils/markdownParser';
 import { createBlankDoc, styleDocContent, moveFileToFolder } from './utils/docsExporter';
+import { resolveMermaidElements } from './utils/mermaidRenderer';
 import { ConversionSettings, UploadedFile } from './types';
 
 import FileUploader from './components/FileUploader';
@@ -135,6 +136,10 @@ export default function App() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  // True when the Google session expired and silent refresh couldn't renew it.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  // Non-blocking note shown when some mermaid diagrams couldn't be embedded.
+  const [diagramNote, setDiagramNote] = useState<string | null>(null);
 
   // App UI state
   const [activeTab, setActiveTab] = useState<'upload' | 'settings'>('upload');
@@ -269,6 +274,43 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Refresh the Google access token in the background and update state (which also
+  // re-syncs the fresh token to the MCP server via the effect above).
+  const handleTokenRefresh = async (): Promise<string | null> => {
+    const token = await refreshAccessTokenSilently();
+    if (token) {
+      setAccessToken(token);
+      setSessionExpired(false);
+    } else {
+      setSessionExpired(true);
+    }
+    return token;
+  };
+
+  // Keep the access token fresh while the app stays open past its ~1h lifetime:
+  // refresh on an interval, and whenever the tab regains focus (timers throttle in
+  // background tabs, so the visibility check covers the gap).
+  useEffect(() => {
+    if (!user || !accessToken) return;
+
+    const interval = setInterval(() => {
+      handleTokenRefresh();
+    }, 30 * 60 * 1000);
+
+    const onVisible = async () => {
+      if (document.visibilityState === 'visible') {
+        const token = await getValidAccessToken();
+        if (token && token !== accessToken) setAccessToken(token);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user, accessToken]);
+
   const handleLogin = async () => {
     setLoadingAuth(true);
     setAuthError(null);
@@ -277,6 +319,7 @@ export default function App() {
       if (result) {
         setUser(result.user);
         setAccessToken(result.accessToken);
+        setSessionExpired(false);
       }
     } catch (err: any) {
       console.error(err);
@@ -357,9 +400,15 @@ export default function App() {
   const handleConvertAll = async () => {
     if (!accessToken || uploadedFiles.length === 0) return;
 
+    // Ensure the token is fresh before a (potentially long) batch of API calls.
+    const token = (await getValidAccessToken()) || accessToken;
+    if (token !== accessToken) setAccessToken(token);
+
     setIsProcessing(true);
     setGlobalError(null);
+    setDiagramNote(null);
     let successfullyConverted = 0;
+    let diagramEmbedFailures = 0;
 
     // We process each file sequentially
     for (let i = 0; i < uploadedFiles.length; i++) {
@@ -382,14 +431,18 @@ export default function App() {
         // 1. Parsing markdown line objects & headers
         const parsed = parseMarkdown(file.content, file.name, settings.headingMapping);
 
-        // 2. Provision empty Google Doc
-        const documentId = await createBlankDoc(accessToken, parsed.title);
+        // 1b. Render any mermaid diagrams to images and host them for embedding
+        await resolveMermaidElements(parsed.elements);
 
-        // 3. Write and format paragraphs
-        await styleDocContent(accessToken, documentId, parsed.elements, settings);
+        // 2. Provision empty Google Doc
+        const documentId = await createBlankDoc(token, parsed.title);
+
+        // 3. Write and format paragraphs (returns how many diagrams couldn't be embedded)
+        const styleResult = await styleDocContent(token, documentId, parsed.elements, settings);
+        diagramEmbedFailures += styleResult.mermaidEmbedFailed;
 
         // 4. Move document to chosen folder
-        await moveFileToFolder(accessToken, documentId, selectedFolder.id);
+        await moveFileToFolder(token, documentId, selectedFolder.id);
 
         const docUrl = `https://docs.google.com/document/d/${documentId}/edit`;
 
@@ -420,6 +473,11 @@ export default function App() {
     }
 
     setSuccessCount(successfullyConverted);
+    if (diagramEmbedFailures > 0) {
+      setDiagramNote(
+        `${diagramEmbedFailures} diagram${diagramEmbedFailures > 1 ? 's' : ''} couldn't be embedded into the document. This usually means Google couldn't fetch the image — it happens when the app isn't reachable from the public internet (e.g. running on localhost). Deploy the app (or use a public tunnel) and the diagrams will embed.`
+      );
+    }
     setIsProcessing(false);
   };
 
@@ -547,6 +605,21 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-between min-h-0">
+        {user && sessionExpired && (
+          <div className="mb-6 flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-300">
+            <div className="flex items-start gap-2 text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+              <span>Your Google session expired. Please sign in again to keep saving to Google Drive &amp; Docs.</span>
+            </div>
+            <button
+              onClick={handleLogin}
+              disabled={loadingAuth}
+              className="shrink-0 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 rounded-lg py-1.5 px-3 transition cursor-pointer"
+            >
+              Sign in again
+            </button>
+          </div>
+        )}
         {!user ? (
           /* Sign-In Welcome Gate Layout with a bordered card */
           <div className="max-w-[540px] mx-auto my-auto w-full px-4 py-8" id="welcome-gate">
@@ -697,6 +770,13 @@ export default function App() {
                   </div>
                 )}
 
+                {diagramNote && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs font-semibold rounded-xl border border-amber-200 dark:border-amber-900/40 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                    <span>{diagramNote}</span>
+                  </div>
+                )}
+
                 {successCount > 0 && !isProcessing && (
                   <div className="p-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-350 text-xs font-semibold rounded-xl border border-emerald-100/80 dark:border-emerald-900/30 flex items-start gap-2.5">
                     <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
@@ -744,6 +824,7 @@ export default function App() {
                 accessToken={accessToken}
                 selectedFolderId={selectedFolder.id}
                 onSelectFolder={handleSelectFolder}
+                onTokenExpired={handleTokenRefresh}
               />
             </div>
           </div>

@@ -212,6 +212,7 @@ export function parseMarkdown(
       | "numbered_list"
       | "horizontal_rule"
       | "code_block"
+      | "mermaid"
       | "table";
     tableRows?: string[][];
     links: { startIndex: number; endIndex: number; url: string }[];
@@ -226,6 +227,7 @@ export function parseMarkdown(
 
   let inCodeBlock = false;
   let codeBlockLines: string[] = [];
+  let codeBlockLang = "";
 
   let inTable = false;
   let tableRows: string[][] = [];
@@ -258,22 +260,39 @@ export function parseMarkdown(
       if (inCodeBlock) {
         // End of code block
         inCodeBlock = false;
-        codeBlockLines.push(originalLine);
-        parsedLines.push({
-          raw: codeBlockLines.join("\n"),
-          text: codeBlockLines.join("\n"),
-          rawType: "code_block",
-          links: [],
-          boldRanges: [],
-          italicRanges: [],
-          underlineRanges: [],
-          strikethroughRanges: [],
-        });
+        if (codeBlockLang === "mermaid") {
+          // Emit only the diagram source (strip the opening fence line) for image rendering.
+          const diagramSource = codeBlockLines.slice(1).join("\n");
+          parsedLines.push({
+            raw: codeBlockLines.join("\n"),
+            text: diagramSource,
+            rawType: "mermaid",
+            links: [],
+            boldRanges: [],
+            italicRanges: [],
+            underlineRanges: [],
+            strikethroughRanges: [],
+          });
+        } else {
+          codeBlockLines.push(originalLine);
+          parsedLines.push({
+            raw: codeBlockLines.join("\n"),
+            text: codeBlockLines.join("\n"),
+            rawType: "code_block",
+            links: [],
+            boldRanges: [],
+            italicRanges: [],
+            underlineRanges: [],
+            strikethroughRanges: [],
+          });
+        }
         codeBlockLines = [];
+        codeBlockLang = "";
         continue;
       } else {
-        // Start of code block
+        // Start of code block — capture the fence language (e.g. ```mermaid)
         inCodeBlock = true;
+        codeBlockLang = trimmedLine.slice(3).trim().toLowerCase();
         codeBlockLines.push(originalLine);
         continue;
       }
@@ -595,6 +614,12 @@ export function parseMarkdown(
       finalElements.push({
         text: current.text,
         type: "code_block",
+        ...formatting,
+      });
+    } else if (current.rawType === "mermaid") {
+      finalElements.push({
+        text: current.text,
+        type: "mermaid",
         ...formatting,
       });
     } else if (current.rawType === "table") {

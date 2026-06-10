@@ -30,6 +30,11 @@ const firebaseConfig = {
   measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigDefault.measurementId || ""
 };
 
+// OAuth 2.0 Web client ID (Google Cloud Console -> APIs & Services -> Credentials).
+// Required for silent token refresh via Google Identity Services.
+const GOOGLE_CLIENT_ID = metaEnv.VITE_GOOGLE_CLIENT_ID || firebaseConfigDefault.clientId || "";
+const OAUTH_SCOPES = "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive";
+
 let app: any = null;
 let auth: any = null;
 let db: any = null;
@@ -76,6 +81,104 @@ let cachedAccessToken: string | null = (() => {
   }
 })();
 
+// When the cached access token expires (epoch ms). Google access tokens last ~1h.
+let tokenExpiryMs: number | null = (() => {
+  try {
+    const v = localStorage.getItem('gdocs_token_expiry');
+    return v ? Number(v) : null;
+  } catch {
+    return null;
+  }
+})();
+
+function persistToken(token: string, expiresInSec: number) {
+  cachedAccessToken = token;
+  tokenExpiryMs = Date.now() + expiresInSec * 1000;
+  try {
+    localStorage.setItem('gdocs_access_token', token);
+    localStorage.setItem('gdocs_token_expiry', String(tokenExpiryMs));
+  } catch (e) {
+    console.warn('Failed to persist access token:', e);
+  }
+}
+
+// --- Silent token refresh via Google Identity Services (GIS) ---
+let gisScriptPromise: Promise<void> | null = null;
+let gisTokenClient: any = null;
+let pendingResolve: ((t: string | null) => void) | null = null;
+let pendingRefresh: Promise<string | null> | null = null;
+
+function loadGisScript(): Promise<void> {
+  if (gisScriptPromise) return gisScriptPromise;
+  gisScriptPromise = new Promise<void>((resolve, reject) => {
+    if ((window as any).google?.accounts?.oauth2) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load Google Identity Services script'));
+    document.head.appendChild(s);
+  });
+  return gisScriptPromise;
+}
+
+async function ensureTokenClient(): Promise<any> {
+  if (!GOOGLE_CLIENT_ID) {
+    throw new Error('VITE_GOOGLE_CLIENT_ID is not configured; cannot silently refresh the Google access token.');
+  }
+  await loadGisScript();
+  if (!gisTokenClient) {
+    gisTokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: OAUTH_SCOPES,
+      callback: (resp: any) => {
+        const resolve = pendingResolve;
+        pendingResolve = null;
+        if (resp.error || !resp.access_token) {
+          console.error('[Auth] Silent token refresh response error:', resp.error || 'no access_token');
+          if (resolve) resolve(null);
+          return;
+        }
+        persistToken(resp.access_token, Number(resp.expires_in) || 3600);
+        if (resolve) resolve(cachedAccessToken);
+      },
+    });
+  }
+  return gisTokenClient;
+}
+
+// Silently obtain a fresh access token. No popup if the user's Google session is
+// active and consent was already granted; resolves null if interaction is required.
+export const refreshAccessTokenSilently = async (): Promise<string | null> => {
+  if (pendingRefresh) return pendingRefresh;
+  pendingRefresh = (async () => {
+    try {
+      const client = await ensureTokenClient();
+      return await new Promise<string | null>((resolve) => {
+        pendingResolve = resolve;
+        client.requestAccessToken({ prompt: '' });
+      });
+    } catch (e) {
+      console.error('[Auth] Silent token refresh failed:', e);
+      return null;
+    }
+  })().finally(() => {
+    pendingRefresh = null;
+  });
+  return pendingRefresh;
+};
+
+// Return a token guaranteed fresh for the next few minutes, refreshing if needed.
+export const getValidAccessToken = async (): Promise<string | null> => {
+  const SKEW_MS = 5 * 60 * 1000;
+  if (cachedAccessToken && tokenExpiryMs && Date.now() < tokenExpiryMs - SKEW_MS) {
+    return cachedAccessToken;
+  }
+  const refreshed = await refreshAccessTokenSilently();
+  return refreshed || cachedAccessToken;
+};
+
 // Initialize auth state listener. Call this on app load.
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
@@ -90,19 +193,13 @@ export const initAuth = (
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      // Try to reload token from localStorage if memory cached is null
-      if (!cachedAccessToken) {
-        try {
-          cachedAccessToken = localStorage.getItem('gdocs_access_token');
-        } catch (err) {
-          console.error('[Auth] Failed to load access token from localStorage:', err);
-        }
-      }
+      // Use the cached token if still valid; otherwise silently refresh via GIS so a
+      // page reload after the ~1h token expiry doesn't force a manual sign-in.
+      const token = await getValidAccessToken();
 
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      if (token) {
+        if (onAuthSuccess) onAuthSuccess(user, token);
       } else if (!isSigningIn) {
-        cachedAccessToken = null;
         if (onAuthFailure) onAuthFailure();
       }
     } else {
@@ -129,13 +226,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Failed to get access token from Firebase Auth');
     }
 
-    cachedAccessToken = credential.accessToken;
-    try {
-      localStorage.setItem('gdocs_access_token', cachedAccessToken);
-    } catch (e) {
-      console.warn('Failed to save access token to localStorage:', e);
-    }
-    return { user: result.user, accessToken: cachedAccessToken };
+    // Firebase doesn't surface expires_in; Google access tokens are ~1h, so assume 3600s.
+    persistToken(credential.accessToken, 3600);
+    return { user: result.user, accessToken: cachedAccessToken! };
   } catch (error: any) {
     console.error('Sign in error:', error);
     throw error;
@@ -156,8 +249,10 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const logout = async () => {
   try {
     localStorage.removeItem('gdocs_access_token');
+    localStorage.removeItem('gdocs_token_expiry');
   } catch {}
   cachedAccessToken = null;
+  tokenExpiryMs = null;
   if (!auth) {
     return;
   }

@@ -1,0 +1,14 @@
+# gitleaks configuration — extends the default ruleset.
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Firebase WEB app config is public by design — apiKey/appId/authDomain/etc. are shipped in
+the client bundle and access is controlled by Firebase Security Rules + authorized domains,
+not by keeping these values secret. This file must ONLY ever contain public web config;
+never put an OAuth client secret, service-account key, or private key here.
+"""
+paths = ['''firebase-applet-config.*\.json''']
