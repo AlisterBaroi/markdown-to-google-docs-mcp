@@ -141,8 +141,104 @@ export async function styleDocContent(
     groupedElements.push({ type: "list_group", items: currentList });
   }
 
-  // 2. Prepare structural updates (BACKWARDS processing for perfect indices)
+  // Step 1: Insert content structures sequentially (No formatting/indices calculation needed!)
+  const insertRequests: any[] = [];
+  for (let i = 0; i < groupedElements.length; i++) {
+    const group = groupedElements[i];
+    const isFirst = i === 0;
+    const location = isFirst ? { location: { index: 1 } } : { endOfSegmentLocation: {} };
+
+    if (group.type === "list_group") {
+      const listItems = group.items as DocElement[];
+      const fullListText = listItems.map((item) => item.text).join("\n") + "\n";
+      insertRequests.push({
+        insertText: {
+          ...location,
+          text: fullListText,
+        },
+      });
+    } else if (group.type === "table") {
+      const rows = group.tableRows?.length || 1;
+      const cols = group.tableRows ? Math.max(...group.tableRows.map((row: string[]) => row.length)) : 1;
+      insertRequests.push({
+        insertTable: {
+          rows,
+          columns: cols,
+          ...location,
+        },
+      });
+    } else {
+      const rawText = group.text || " ";
+      const textToInsert = rawText + "\n";
+      insertRequests.push({
+        insertText: {
+          ...location,
+          text: textToInsert,
+        },
+      });
+    }
+  }
+
+  // Execute Step 1 batchUpdate to populate structure
+  console.log("[DEBUG] Grouped markdown elements to insert:", JSON.stringify(groupedElements, null, 2));
+  console.log("[DEBUG] Sending structural insert requests to Google Docs:", JSON.stringify(insertRequests, null, 2));
+
+  const firstRes = await fetch(
+    `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requests: insertRequests }),
+    },
+  );
+
+  if (!firstRes.ok) {
+    const errText = await firstRes.text();
+    console.error("Structural insert failed:", errText);
+    throw new Error("Failed to insert structural components into document");
+  }
+
+  // Step 2: Fetch the fully structure-populated document metadata to get real indices
+  const docMetadataRes = await fetch(
+    `https://docs.googleapis.com/v1/documents/${documentId}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!docMetadataRes.ok) {
+    throw new Error("Failed to retrieve document metadata for index mapping");
+  }
+
+  const docMetadata = await docMetadataRes.json();
+  const bodyContent = docMetadata.body?.content || [];
+  console.log("[DEBUG] Full body content from retrieved Doc Metadata:", JSON.stringify(bodyContent, null, 2));
+
+  // Filter the paragraph and table blocks to align with groupedElements
+  const structuralBlocks = bodyContent.filter(
+    (el: any) => el.paragraph || el.table
+  );
+  console.log("[DEBUG] Filtered Structural Blocks (Paragraphs & Tables):", JSON.stringify(structuralBlocks, null, 2));
+
+  // Since we inserted the first item at index 1, the structural blocks align with groupedElements 1:1!
+  const usableBlocks = structuralBlocks;
+
+  let blockPointer = 0;
+  const getNextBlock = () => {
+    if (blockPointer >= usableBlocks.length) {
+      console.warn("[DEBUG] getNextBlock called but we run out of usableBlocks! Pointer:", blockPointer);
+      return null;
+    }
+    const block = usableBlocks[blockPointer++];
+    console.log(`[DEBUG] getNextBlock (Pointer: ${blockPointer - 1}) returned block:`, JSON.stringify(block, null, 2));
+    return block;
+  };
+
   const requests: any[] = [];
+  const cellPairs: { index: number; requests: any[] }[] = [];
 
   // Helper to push text formatting
   const addTextStyles = (
@@ -359,8 +455,6 @@ export async function styleDocContent(
 
     let spaceBelow = format.spaceBelow !== undefined ? format.spaceBelow : 0;
     if (el.type === "list_item") {
-      // If user provided a specific spaceBelow, we respect it for all list items.
-      // If none provided, we default to 4 for middle items and 8 for the last item.
       spaceBelow =
         format.spaceBelow !== undefined
           ? format.spaceBelow
@@ -410,41 +504,56 @@ export async function styleDocContent(
     });
   };
 
-  for (let i = groupedElements.length - 1; i >= 0; i--) {
+  for (let i = 0; i < groupedElements.length; i++) {
     const group = groupedElements[i];
 
     if (group.type === "list_group") {
       const listItems = group.items as DocElement[];
-      const fullListText = listItems.map((item) => item.text).join("\n") + "\n";
-      requests.push({
-        insertText: { location: { index: 1 }, text: fullListText },
-      });
+      let firstBlock: any = null;
+      let lastBlock: any = null;
 
-      requests.push({
-        createParagraphBullets: {
-          range: { startIndex: 1, endIndex: 1 + fullListText.length },
-          bulletPreset: listItems[0].bulleted
-            ? "BULLET_DISC_CIRCLE_SQUARE"
-            : "NUMBERED_DECIMAL_ALPHA_ROMAN",
-        },
-      });
-
-      let currIdx = 1;
       for (let j = 0; j < listItems.length; j++) {
         const item = listItems[j];
-        addTextStyles(item, currIdx, currIdx + item.text.length, "list");
-        currIdx += item.text.length + 1;
+        const block = getNextBlock();
+        if (block && block.paragraph) {
+          if (j === 0) firstBlock = block;
+          if (j === listItems.length - 1) lastBlock = block;
+
+          const start = block.startIndex;
+          const end = block.endIndex - 1; // omit the trailing newline
+          addTextStyles(item, start, end, "list");
+        }
+      }
+
+      if (firstBlock && lastBlock) {
+        requests.push({
+          createParagraphBullets: {
+            range: {
+              startIndex: firstBlock.startIndex,
+              endIndex: lastBlock.endIndex,
+            },
+            bulletPreset: listItems[0].bulleted
+              ? "BULLET_DISC_CIRCLE_SQUARE"
+              : "NUMBERED_DECIMAL_ALPHA_ROMAN",
+          },
+        });
       }
     } else if (group.type === "table") {
-      const rows = group.tableRows?.length || 1;
-      const cols = group.tableRows?.[0]?.length || 1;
+      console.log("[DEBUG] Group element is a table. Retrieving table block...");
+      const block = getNextBlock();
+      if (block) {
+        console.log("[DEBUG] Recovered block for table:", JSON.stringify(block, null, 2));
+      } else {
+        console.warn("[DEBUG] Recovered block for table is NULL!");
+      }
+      if (block && block.table) {
+        const gTable = block.table;
+        const rows = group.tableRows?.length || 1;
+        const cols = group.tableRows ? Math.max(...group.tableRows.map((row: string[]) => row.length)) : 1;
+        console.log(`[DEBUG] Table metadata from group: rows=${rows}, cols=${cols}`);
+        console.log("[DEBUG] Table structure from Doc Metadata:", JSON.stringify(gTable, null, 2));
 
-      requests.push({
-        insertTable: { rows, columns: cols, location: { index: 1 } },
-      });
-
-      if (group.tableRows) {
-        // Style header background (sent before text so it applies to the table directly)
+        // Apply header background formatting
         requests.push({
           updateTableCellStyle: {
             tableCellStyle: {
@@ -455,7 +564,7 @@ export async function styleDocContent(
             fields: "backgroundColor",
             tableRange: {
               tableCellLocation: {
-                tableStartLocation: { index: 2 },
+                tableStartLocation: { index: block.startIndex },
                 rowIndex: 0,
                 columnIndex: 0,
               },
@@ -465,99 +574,123 @@ export async function styleDocContent(
           },
         });
 
-        // Insert text backwards (last row, last col -> first row, first col)
-        for (let r = rows - 1; r >= 0; r--) {
-          for (let c = cols - 1; c >= 0; c--) {
-            const rawCellT = group.tableRows[r][c] || "";
-            const cellText = rawCellT + "\n";
-            // Docs API table indexing:
-            // Table starts at index 2 (1 is the implicit initial \n).
-            // Row 0 start: 3. Cell 0,0 start: 4. Text index: 5.
-            const cellInsertIdx = 5 + r * (2 * cols + 1) + 2 * c;
+        // Collect cell text insertions
+        if (group.tableRows) {
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const rawCellT = group.tableRows[r]?.[c] || "";
+              const cell = gTable.tableRows?.[r]?.tableCells?.[c];
+              console.log(`[DEBUG] Processing cells [row=${r}, col=${c}]: text="${rawCellT}"`);
+              if (cell) {
+                console.log(`[DEBUG] Found TableCell in Doc Metadata: startIndex=${cell.startIndex}, endIndex=${cell.endIndex}`);
+                if (cell.content && cell.content.length > 0) {
+                  console.log(`[DEBUG] Cell content first element:`, JSON.stringify(cell.content[0], null, 2));
+                }
+              } else {
+                console.warn(`[DEBUG] TableCell was NOT found in Doc Metadata at Row ${r}, Col ${c}!`);
+              }
 
-            if (rawCellT.length > 0) {
-              requests.push({
-                insertText: {
-                  location: { index: cellInsertIdx },
-                  text: rawCellT,
-                },
-              });
-            }
+              if (cell && rawCellT.length > 0) {
+                const cellInsertIdx = cell.content?.[0]?.startIndex ?? cell.startIndex;
+                console.log(`[DEBUG] Computed cellInsertIdx = ${cellInsertIdx}`);
+                if (cellInsertIdx === undefined) {
+                  console.warn(`[DEBUG] cellInsertIdx is undefined for cell [row=${r}, col=${c}]`);
+                  continue;
+                }
 
-            if (r === 0) {
-              requests.push({
-                updateTextStyle: {
-                  textStyle: { bold: true },
-                  fields: "bold",
-                  range: {
-                    startIndex: cellInsertIdx,
-                    endIndex: cellInsertIdx + rawCellT.length + 1,
-                  },
-                },
-              });
-            } else {
-              requests.push({
-                updateTextStyle: {
-                  textStyle: { bold: false },
-                  fields: "bold",
-                  range: {
-                    startIndex: cellInsertIdx,
-                    endIndex: cellInsertIdx + rawCellT.length + 1,
-                  },
-                },
-              });
+                const isHeader = r === 0;
+                cellPairs.push({
+                  index: cellInsertIdx,
+                  requests: [
+                    {
+                      insertText: {
+                        location: { index: cellInsertIdx },
+                        text: rawCellT,
+                      },
+                    },
+                    {
+                      updateTextStyle: {
+                        textStyle: {
+                          bold: isHeader,
+                          fontSize: { magnitude: 10, unit: "PT" },
+                          weightedFontFamily: { fontFamily: settings.text.fontFamily },
+                        },
+                        fields: "bold,fontSize,weightedFontFamily",
+                        range: {
+                          startIndex: cellInsertIdx,
+                          endIndex: cellInsertIdx + rawCellT.length,
+                        },
+                      },
+                    },
+                  ],
+                });
+              }
             }
-            // Normal font config for table
-            requests.push({
-              updateTextStyle: {
-                textStyle: { fontSize: { magnitude: 11, unit: "PT" } },
-                fields: "fontSize",
-                range: {
-                  startIndex: cellInsertIdx,
-                  endIndex: cellInsertIdx + rawCellT.length + 1,
-                },
-              },
-            });
           }
         }
+      } else {
+        console.warn("[DEBUG] Block is NOT a table: block.table is falsy!", block);
       }
     } else {
-      const rawText = group.text || " ";
-      requests.push({
-        insertText: { location: { index: 1 }, text: rawText + "\n" },
-      });
+      console.log(`[DEBUG] Group element is not list or table (type=${group.type}). Getting next block...`);
+      const block = getNextBlock();
+      if (block) {
+        console.log(`[DEBUG] Block for non-table/list (type=${group.type}): startIndex=${block.startIndex}, endIndex=${block.endIndex}`);
+      } else {
+        console.warn(`[DEBUG] Block for non-table/list (type=${group.type}) is NULL!`);
+      }
+      if (block && block.paragraph) {
+        const start = block.startIndex;
+        const end = block.endIndex - 1; // omit the trailing newline
 
-      // Prevent inheriting list styles from elements below it when inserting backwards
-      requests.push({
-        deleteParagraphBullets: {
-          range: { startIndex: 1, endIndex: 1 + rawText.length + 1 },
-        },
-      });
+        // Prevent bullet leaks
+        requests.push({
+          deleteParagraphBullets: {
+            range: { startIndex: start, endIndex: block.endIndex },
+          },
+        });
 
-      let key = "text";
-      if (group.type === "title") key = "title";
-      else if (group.type === "heading1") key = "heading1";
-      else if (group.type === "heading2") key = "heading2";
+        let key = "text";
+        if (group.type === "title") key = "title";
+        else if (group.type === "heading1") key = "heading1";
+        else if (group.type === "heading2") key = "heading2";
 
-      addTextStyles(group, 1, 1 + rawText.length, key);
+        addTextStyles(group, start, end, key);
+      }
     }
   }
 
-  const updateRes = await fetch(
-    `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ requests }),
-    },
-  );
+  // Sort cell insertions in DESCENDING order of index! (Very important to avoid shifting lower index elements!)
+  console.log(`[DEBUG] Raw cellPairs collected:`, JSON.stringify(cellPairs, null, 2));
+  cellPairs.sort((a, b) => b.index - a.index);
+  console.log(`[DEBUG] Sorted cellPairs:`, JSON.stringify(cellPairs, null, 2));
+  const cellInsertRequests = cellPairs.flatMap((pair) => pair.requests);
 
-  if (!updateRes.ok) {
-    const errText = await updateRes.text();
-    console.error("Batch Update failed:", errText);
-    throw new Error("Failed to style document content successfully");
+  // Combine formatting and cell content insertions
+  const finalRequests = [...requests, ...cellInsertRequests];
+  console.log("[DEBUG] Sending batchUpdate requests final list:", JSON.stringify(finalRequests, null, 2));
+
+  if (finalRequests.length > 0) {
+    const updateRes = await fetch(
+      `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requests: finalRequests }),
+      },
+    );
+
+    if (!updateRes.ok) {
+      const errText = await updateRes.text();
+      console.error("Batch Update failed:", errText);
+      throw new Error("Failed to style document content successfully");
+    } else {
+      console.log("[DEBUG] Batch update succeeded!");
+    }
+  } else {
+    console.log("[DEBUG] No formatting/insert requests generated.");
   }
 }

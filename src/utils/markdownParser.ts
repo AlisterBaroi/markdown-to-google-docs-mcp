@@ -32,13 +32,14 @@ function stripMarkdownFormatting(text: string): {
       startIndex: number,
     ) => {
       replacement: string;
+      prefixLen: number;
       newRanges: { type: string; start: number; end: number; data?: any }[];
     },
   ) => {
     let match;
     while ((match = regex.exec(cleaned)) !== null) {
       const startIndex = match.index;
-      const { replacement, newRanges } = onMatch(match, startIndex);
+      const { replacement, prefixLen, newRanges } = onMatch(match, startIndex);
       const lengthDiff = replacement.length - match[0].length;
 
       cleaned =
@@ -47,8 +48,15 @@ function stripMarkdownFormatting(text: string): {
         cleaned.slice(startIndex + match[0].length);
 
       const updateRange = (r: { startIndex: number; endIndex: number }) => {
-        if (r.startIndex > startIndex) r.startIndex += lengthDiff;
-        if (r.endIndex > startIndex) r.endIndex += lengthDiff;
+        const updateVal = (idx: number): number => {
+          if (idx <= startIndex) return idx;
+          if (idx >= startIndex + match[0].length) return idx + lengthDiff;
+          if (idx <= startIndex + prefixLen) return startIndex;
+          if (idx >= startIndex + prefixLen + replacement.length) return startIndex + replacement.length;
+          return idx - prefixLen;
+        };
+        r.startIndex = updateVal(r.startIndex);
+        r.endIndex = updateVal(r.endIndex);
       };
 
       links.forEach(updateRange);
@@ -78,6 +86,7 @@ function stripMarkdownFormatting(text: string): {
   doReplace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, start) => {
     return {
       replacement: match[1],
+      prefixLen: 1,
       newRanges: [
         { type: "link", start, end: start + match[1].length, data: match[2] },
       ],
@@ -89,6 +98,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[2].length;
     return {
       replacement: match[2],
+      prefixLen: 3,
       newRanges: [
         { type: "bold", start, end: start + textLen },
         { type: "italic", start, end: start + textLen },
@@ -101,6 +111,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[2].length;
     return {
       replacement: match[2],
+      prefixLen: 2,
       newRanges: [{ type: "bold", start, end: start + textLen }],
     };
   });
@@ -110,6 +121,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[2].length;
     return {
       replacement: match[2],
+      prefixLen: 2,
       newRanges: [{ type: "underline", start, end: start + textLen }],
     };
   });
@@ -119,6 +131,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[2].length;
     return {
       replacement: match[2],
+      prefixLen: 1,
       newRanges: [{ type: "italic", start, end: start + textLen }],
     };
   });
@@ -128,6 +141,7 @@ function stripMarkdownFormatting(text: string): {
     const textLen = match[1].length;
     return {
       replacement: match[1],
+      prefixLen: 2,
       newRanges: [{ type: "strikethrough", start, end: start + textLen }],
     };
   });
@@ -136,6 +150,7 @@ function stripMarkdownFormatting(text: string): {
   doReplace(/`([^`]+)`/g, (match, start) => {
     return {
       replacement: match[1],
+      prefixLen: 1,
       newRanges: [],
     };
   });
@@ -151,6 +166,7 @@ function stripMarkdownFormatting(text: string): {
     links.forEach(shiftRange);
     boldRanges.forEach(shiftRange);
     italicRanges.forEach(shiftRange);
+    underlineRanges.forEach(shiftRange);
     strikethroughRanges.forEach(shiftRange);
   }
 
@@ -162,6 +178,7 @@ function stripMarkdownFormatting(text: string): {
   links.forEach(capRange);
   boldRanges.forEach(capRange);
   italicRanges.forEach(capRange);
+  underlineRanges.forEach(capRange);
   strikethroughRanges.forEach(capRange);
 
   // Return signature addition

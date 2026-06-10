@@ -18,7 +18,8 @@ import {
   BookOpen,
   ArrowRight,
   Sun,
-  Moon
+  Moon,
+  Terminal
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 
@@ -30,6 +31,7 @@ import { ConversionSettings, UploadedFile } from './types';
 import FileUploader from './components/FileUploader';
 import FolderSelector from './components/FolderSelector';
 import SettingsPanel from './components/SettingsPanel';
+import McpPanel from './components/McpPanel';
 
 // Default user guidelines settings
 const DEFAULT_SETTINGS: ConversionSettings = {
@@ -154,6 +156,66 @@ export default function App() {
   const [successCount, setSuccessCount] = useState(0);
   
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  // Routing & MCP states
+  const [isMcpRoute, setIsMcpRoute] = useState<boolean>(() => {
+    return window.location.pathname.toUpperCase() === "/MCP";
+  });
+
+  const [mcpToken, setMcpToken] = useState<string>(() => {
+    let token = localStorage.getItem("mcp_connection_token");
+    if (!token) {
+      const array = new Uint8Array(24);
+      window.crypto.getRandomValues(array);
+      const hex = Array.from(array, b => b.toString(16).padStart(2, "0")).join("");
+      token = `mcp_${hex}`;
+      localStorage.setItem("mcp_connection_token", token);
+    }
+    return token;
+  });
+
+  // Handle browser popstate navigation dynamically
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsMcpRoute(window.location.pathname.toUpperCase() === "/MCP");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  // Proactively sync credentials to the Express background to permit Claude Code conversions
+  useEffect(() => {
+    if (user && accessToken && mcpToken) {
+      const syncSession = async () => {
+        try {
+          const res = await fetch("/api/mcp/sync", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              mcpToken,
+              accessToken,
+              email: user.email,
+              displayName: user.displayName,
+              settings
+            })
+          });
+          const data = await res.json();
+          console.log("[MCP] Credentials synchronized with server:", data);
+        } catch (err) {
+          console.error("[MCP] Credentials synchronization failed:", err);
+        }
+      };
+
+      syncSession();
+      // Keep state fresh and active on server
+      const interval = setInterval(syncSession, 3 * 60 * 1000); // 3 minutes
+      return () => clearInterval(interval);
+    }
+  }, [user, accessToken, mcpToken, settings]);
 
   // Update theme class on HTML element layout
   useEffect(() => {
@@ -376,7 +438,14 @@ export default function App() {
       {/* Dynamic Navigation Header */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 shadow-sm transition-colors duration-200" id="navigation-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[60px] flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => {
+              window.history.pushState({}, "", "/");
+              window.dispatchEvent(new Event("popstate"));
+            }}
+            className="flex items-center space-x-3 text-left focus:outline-none cursor-pointer hover:opacity-90 transition-opacity"
+            id="home-logo-btn"
+          >
             <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-sm select-none shadow-sm">
               M
             </div>
@@ -384,7 +453,7 @@ export default function App() {
               <span className="text-lg font-semibold tracking-tight text-slate-900 dark:text-white block leading-none">Markdown to Docs</span>
               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold block leading-none">Transform Markdown files into Google Docs</span>
             </div>
-          </div>
+          </button>
 
           <div className="flex items-center gap-3">
             {user && (
@@ -442,13 +511,25 @@ export default function App() {
                         <p className="text-sm font-bold text-slate-800 dark:text-white truncate leading-tight">{user.displayName || 'Author'}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">{user.email}</p>
                       </div>
-                      <div className="p-1 mt-1">
+                      <div className="p-1 mt-1 space-y-1">
+                        <button
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            window.history.pushState({}, "", "/MCP");
+                            window.dispatchEvent(new Event("popstate"));
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg font-medium transition cursor-pointer select-none text-left"
+                          title="View MCP Server connection details"
+                        >
+                          <Terminal className="w-4 h-4 text-slate-500" />
+                          MCP Server
+                        </button>
                         <button
                           onClick={() => {
                             setShowProfileDropdown(false);
                             handleLogout();
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg font-medium transition cursor-pointer select-none text-left"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/35 rounded-lg font-medium transition cursor-pointer select-none text-left"
                           title="Disconnect and log out"
                         >
                           <LogOut className="w-4 h-4" />
@@ -506,6 +587,25 @@ export default function App() {
               </button>
             </div>
           </div>
+        ) : isMcpRoute ? (
+          <McpPanel 
+            user={user}
+            mcpToken={mcpToken}
+            onRegenerateToken={() => {
+              if (confirm("Are you sure you want to invalidate your current token and generate a new one? You will need to update your Claude config.")) {
+                const array = new Uint8Array(24);
+                window.crypto.getRandomValues(array);
+                const hex = Array.from(array, b => b.toString(16).padStart(2, "0")).join("");
+                const newToken = `mcp_${hex}`;
+                setMcpToken(newToken);
+                localStorage.setItem("mcp_connection_token", newToken);
+              }
+            }}
+            onBack={() => {
+              window.history.pushState({}, "", "/");
+              window.dispatchEvent(new Event("popstate"));
+            }}
+          />
         ) : (
           /* Active Workspace Layout */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="active-workspace">
