@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 
-import { initAuth, googleSignIn, logout } from './utils/firebaseAuth';
+import { initAuth, googleSignIn, logout, db, handleFirestoreError, OperationType } from './utils/firebaseAuth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { parseMarkdown } from './utils/markdownParser';
 import { createBlankDoc, styleDocContent, moveFileToFolder } from './utils/docsExporter';
 import { ConversionSettings, UploadedFile } from './types';
@@ -135,6 +136,7 @@ export default function App() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [allowedEmailDomain, setAllowedEmailDomain] = useState<string | null>(null);
 
   // App UI state
   const [activeTab, setActiveTab] = useState<'upload' | 'settings'>('upload');
@@ -275,6 +277,17 @@ export default function App() {
     try {
       const result = await googleSignIn();
       if (result) {
+        if (allowedEmailDomain) {
+          const email = result.user.email || "";
+          const domain = allowedEmailDomain.trim().toLowerCase();
+          if (!email.toLowerCase().endsWith(`@${domain}`)) {
+            setAuthError(`Access Denied: Your email address (${email}) is not authorized to use this application. Only @${domain} accounts are permitted.`);
+            await logout();
+            setUser(null);
+            setAccessToken(null);
+            return;
+          }
+        }
         setUser(result.user);
         setAccessToken(result.accessToken);
       }
@@ -316,13 +329,107 @@ export default function App() {
     }
   };
 
+  // Fetch application configuration on mount to verify any domain lock settings
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        if (data.emailDomain) {
+          setAllowedEmailDomain(data.emailDomain);
+        }
+      } catch (err) {
+        console.error("Failed to load server configuration:", err);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // Enforce EMAIL_DOMAIN restriction dynamically if user and configuration are loaded
+  useEffect(() => {
+    if (user && allowedEmailDomain) {
+      const email = user.email || "";
+      const domain = allowedEmailDomain.trim().toLowerCase();
+      if (!email.toLowerCase().endsWith(`@${domain}`)) {
+        setAuthError(`Access Denied: Your email address (${email}) is not authorized to use this application. Only @${domain} accounts are permitted.`);
+        handleLogout();
+      }
+    }
+  }, [user, allowedEmailDomain]);
+
+  // Load settings from Firestore when user logs in
+  useEffect(() => {
+    if (!user || !user.email || !db) return;
+
+    const fetchUserSettings = async () => {
+      try {
+        const docRef = doc(db, 'user_settings', user.email);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.settings) {
+            console.log('[Firestore] Loaded custom settings from cloud for:', user.email);
+            setSettings({
+              ...DEFAULT_SETTINGS,
+              ...data.settings,
+              headingMapping: {
+                ...DEFAULT_SETTINGS.headingMapping,
+                ...(data.settings.headingMapping || {})
+              }
+            });
+            // Also sync to localstorage
+            localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(data.settings));
+          }
+        } else {
+          // If Firestore has no settings document yet, let's write current settings there!
+          console.log('[Firestore] No cloud settings found, initializing cloud document with current styles for:', user.email);
+          await setDoc(docRef, {
+            email: user.email,
+            settings: settings,
+            updatedAt: Date.now()
+          });
+        }
+      } catch (err) {
+        console.warn('[Firestore] Failed to fetch or init user settings from cloud:', err);
+        try {
+          handleFirestoreError(err, OperationType.GET, `user_settings/${user.email}`);
+        } catch (errorObj) {
+          console.error(errorObj);
+        }
+      }
+    };
+
+    fetchUserSettings();
+  }, [user]);
+
   // Saved presets update
-  const handleUpdateSettings = (newSettings: ConversionSettings) => {
+  const handleUpdateSettings = async (newSettings: ConversionSettings) => {
     setSettings(newSettings);
     try {
       localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(newSettings));
     } catch (err) {
-      console.error('Failed to save settings:', err);
+      console.error('Failed to save settings locally:', err);
+    }
+
+    // Dynamic write-through to Cloud Firestore
+    if (user && user.email && db) {
+      try {
+        const docRef = doc(db, 'user_settings', user.email);
+        await setDoc(docRef, {
+          email: user.email,
+          settings: newSettings,
+          updatedAt: Date.now()
+        });
+        console.log('[Firestore] Successfully synced updated layout settings to CRM cloud storage.');
+      } catch (err) {
+        console.error('[Firestore] Failed to save settings to cloud:', err);
+        try {
+          handleFirestoreError(err, OperationType.WRITE, `user_settings/${user.email}`);
+        } catch (errorObj) {
+          console.error(errorObj);
+        }
+      }
     }
   };
 

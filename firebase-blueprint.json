@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "mcpSession": {
+      "title": "MCP Session",
+      "description": "Information about an active MCP connection session with Google Workspace OAuth tokens",
+      "type": "object",
+      "properties": {
+        "mcpToken": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "settings": { "type": "object" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["mcpToken", "accessToken", "email"]
+    },
+    "userSetting": {
+      "title": "User Formatting Settings",
+      "description": "User custom layouts and formatting rules synced to the cloud",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "settings": { "type": "object" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["email", "settings"]
+    }
+  },
+  "firestore": {
+    "mcp_sessions/{mcpToken}": {
+      "schema": "mcpSession",
+      "description": "Saves the active session and OAuth credentials keyed by the secure client-generated mcpToken"
+    },
+    "user_settings/{email}": {
+      "schema": "userSetting",
+      "description": "Saves and syncs formatting preferences per user email"
+    }
+  }
+}

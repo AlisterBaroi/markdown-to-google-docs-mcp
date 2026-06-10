@@ -12,47 +12,8 @@ import { ConversionSettings } from "./src/types";
 import fs from "fs";
 import os from "os";
 
-// Stored OUTSIDE the project tree on purpose: it holds live OAuth access tokens
-// (never commit it), and keeping it out of the Vite-watched root avoids a
-// write -> page-reload -> re-sync -> write feedback loop in dev.
-const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(os.tmpdir(), "md-to-gdocs-sessions.json");
-
-// Setup storage maps for MCP sessions
-// Key: mcpToken (generated on client, persistent) -> Value: user's session details
-const sessions = new Map<string, {
-  accessToken: string;
-  email: string;
-  displayName: string;
-  settings?: ConversionSettings;
-  updatedAt: number;
-}>();
-
-function loadPersistedSessions() {
-  try {
-    if (fs.existsSync(SESSIONS_FILE)) {
-      const rawData = fs.readFileSync(SESSIONS_FILE, "utf8");
-      const parsed = JSON.parse(rawData);
-      console.log(`[MCP Server] Loading ${Object.keys(parsed).length} persisted sessions.`);
-      for (const [key, value] of Object.entries(parsed)) {
-        sessions.set(key, value as any);
-      }
-    }
-  } catch (err) {
-    console.error("[MCP Server] Failed to load persisted sessions:", err);
-  }
-}
-
-function savePersistedSessions() {
-  try {
-    const dataObj: Record<string, any> = {};
-    for (const [key, value] of sessions.entries()) {
-      dataObj[key] = value;
-    }
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(dataObj, null, 2), "utf8");
-  } catch (err) {
-    console.error("[MCP Server] Failed to save persisted sessions:", err);
-  }
-}
+// Key: mcpToken -> Value: synced credentials and settings
+const inMemorySyncStore = new Map<string, any>();
 
 // Key: sessionId (generated during SSE handshake) -> Value: active client SSE connection
 const activeMCPSessions = new Map<string, {
@@ -144,35 +105,48 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Load persisted sessions on start
-  loadPersistedSessions();
-
   // Use JSON parsing middleware for POST calls
   app.use(express.json());
 
   // API Health Indicator
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", activeSessions: sessions.size });
+  app.get("/api/health", async (req, res) => {
+    res.json({ status: "ok", activeSessions: activeMCPSessions.size });
+  });
+
+  // API Config indicator to safely expose the requested domain lock setting to the client
+  app.get("/api/config", (req, res) => {
+    res.json({ emailDomain: process.env.EMAIL_DOMAIN ? process.env.EMAIL_DOMAIN.trim() : null });
   });
 
   // Keep Google Workspace / OAuth session credentials in sync with backend
-  app.post("/api/mcp/sync", (req, res) => {
+  app.post("/api/mcp/sync", async (req, res) => {
     const { mcpToken, accessToken, email, displayName, settings } = req.body;
     if (!mcpToken || !accessToken) {
       return res.status(400).json({ error: "Missing required fields mcpToken or accessToken" });
     }
 
-    sessions.set(mcpToken, {
+    // Server-side verification of EMAIL_DOMAIN restriction
+    const allowedDomain = process.env.EMAIL_DOMAIN ? process.env.EMAIL_DOMAIN.trim().toLowerCase() : "";
+    if (allowedDomain && email) {
+      const userEmail = email.trim().toLowerCase();
+      if (!userEmail.endsWith(`@${allowedDomain}`)) {
+        console.warn(`[MCP Server] Rejected sync for unauthorized email domain: ${email}`);
+        return res.status(403).json({ error: `Domain restricted. Only accounts under @${allowedDomain} may sync/export.` });
+      }
+    }
+
+    const payload = {
+      mcpToken,
       accessToken,
       email: email || "",
       displayName: displayName || "",
-      settings,
+      settings: settings || null,
       updatedAt: Date.now()
-    });
+    };
 
-    savePersistedSessions();
+    inMemorySyncStore.set(mcpToken, payload);
+    console.log(`[MCP Server] Saved live sync session to memory for user: ${email || "Unknown"}`);
 
-    console.log(`[MCP Server] Synced local session for user: ${email || "Unknown"}`);
     res.json({ success: true, message: "Credentials synced successfully to server background." });
   });
 
@@ -404,7 +378,7 @@ async function sendMessage(line) {
   });
 
   // SSE Transport connection endpoint
-  app.get("/api/mcp/sse", (req, res) => {
+  app.get("/api/mcp/sse", async (req, res) => {
     const token = req.query.token as string;
     console.log(`[MCP Server] GET /api/mcp/sse received. Token: ${token || "none"}`);
     console.log("[MCP Server] Incoming request headers: " + JSON.stringify(req.headers));
@@ -414,13 +388,13 @@ async function sendMessage(line) {
       return res.status(401).send("Unauthorized: Missing token in query params.");
     }
 
-    if (!sessions.has(token)) {
+    let sessionData: any = inMemorySyncStore.get(token);
+
+    if (!sessionData) {
       console.warn(`[MCP Server] SSE handshake unauthorized: Token "${token}" is not active or has been invalidated.`);
-      console.log("[MCP Server] Known registered tokens: " + JSON.stringify(Array.from(sessions.keys())));
       return res.status(401).send("Unauthorized: Invalid or non-existent MCP Connection Token. Access the /MCP setup page on the Web UI.");
     }
 
-    const sessionData = sessions.get(token);
     console.log(`[MCP Server] SSE authorized for user ${sessionData?.email || "Unknown"}`);
 
     // Set standard Headers for Keep-Alive Server-Sent Events stream
@@ -488,7 +462,8 @@ async function sendMessage(line) {
     console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(logParams));
 
     const { res: sseRes, mcpToken } = clientSession;
-    const sessionData = sessions.get(mcpToken);
+    
+    let sessionData: any = inMemorySyncStore.get(mcpToken);
 
     if (!sessionData) {
       console.warn(`[MCP Server] WARNING: Credentials linked to mcpToken "${mcpToken}" not found or have expired.`);

@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isOwnerEmail(userEmail) {
+      return isSignedIn() && request.auth.token.email == userEmail;
+    }
+
+    // Collection: User Formatting Settings
+    match /user_settings/{userEmail} {
+      allow read, write: if isOwnerEmail(userEmail) && isEmailVerified();
+    }
+
+    // Collection: Active MCP Sessions
+    match /mcp_sessions/{mcpToken} {
+      allow read, write: if isSignedIn() && isEmailVerified() && (
+        (resource == null && request.resource.data.email == request.auth.token.email) ||
+        (resource != null && resource.data.email == request.auth.token.email)
+      );
+    }
+  }
+}
