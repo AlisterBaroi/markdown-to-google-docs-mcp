@@ -16,15 +16,21 @@ COPY . .
 RUN npm run build
 
 # --- Production Stage ---
-FROM nginx:stable-alpine
+FROM node:20-alpine
 
-# Copy built static assets from the build stage
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Copy our custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Install production dependencies only. server.cjs is bundled with --packages=external,
+# so express/googleapis/vite must be present in node_modules at runtime.
+COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Expose Nginx default port
-EXPOSE 80
+# Copy the built frontend (dist/) and the bundled Express server (dist/server.cjs)
+COPY --from=build /app/dist ./dist
 
-CMD ["nginx", "-g", "daemon off;"]
+ENV NODE_ENV=production
+
+# Cloud Run injects PORT (defaults to 8080) and routes to it
+EXPOSE 8080
+
+CMD ["node", "dist/server.cjs"]
