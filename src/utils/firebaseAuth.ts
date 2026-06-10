@@ -57,8 +57,14 @@ export { auth };
 
 // Flag to indicate if we are in the middle of a sign-in flow.
 let isSigningIn = false;
-// Cache the access token in memory.
-let cachedAccessToken: string | null = null;
+// Cache the access token in memory or load from localStorage
+let cachedAccessToken: string | null = (() => {
+  try {
+    return localStorage.getItem('gdocs_access_token');
+  } catch {
+    return null;
+  }
+})();
 
 // Initialize auth state listener. Call this on app load.
 export const initAuth = (
@@ -74,6 +80,15 @@ export const initAuth = (
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
+      // Try to reload token from localStorage if memory cached is null
+      if (!cachedAccessToken) {
+        try {
+          cachedAccessToken = localStorage.getItem('gdocs_access_token');
+        } catch (err) {
+          console.error('[Auth] Failed to load access token from localStorage:', err);
+        }
+      }
+
       if (cachedAccessToken) {
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
@@ -82,6 +97,9 @@ export const initAuth = (
       }
     } else {
       cachedAccessToken = null;
+      try {
+        localStorage.removeItem('gdocs_access_token');
+      } catch {}
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -102,6 +120,11 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     }
 
     cachedAccessToken = credential.accessToken;
+    try {
+      localStorage.setItem('gdocs_access_token', cachedAccessToken);
+    } catch (e) {
+      console.warn('Failed to save access token to localStorage:', e);
+    }
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Sign in error:', error);
@@ -112,14 +135,21 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
+  if (!cachedAccessToken) {
+    try {
+      cachedAccessToken = localStorage.getItem('gdocs_access_token');
+    } catch {}
+  }
   return cachedAccessToken;
 };
 
 export const logout = async () => {
+  try {
+    localStorage.removeItem('gdocs_access_token');
+  } catch {}
+  cachedAccessToken = null;
   if (!auth) {
-    cachedAccessToken = null;
     return;
   }
   await auth.signOut();
-  cachedAccessToken = null;
 };

@@ -448,7 +448,7 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
 
                         {/* Local Code block */}
                         <div className="relative">
-                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-auto border border-slate-800 max-h-[140px] leading-relaxed">
+                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-auto border border-slate-800 max-h-[350px] leading-relaxed">
                             {localScriptCode}
                           </pre>
                           <button
