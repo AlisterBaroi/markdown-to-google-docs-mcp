@@ -9,6 +9,9 @@ import { createServer as createViteServer } from "vite";
 import { parseMarkdown } from "./src/utils/markdownParser";
 import { createBlankDoc, styleDocContent, moveFileToFolder } from "./src/utils/docsExporter";
 import { ConversionSettings } from "./src/types";
+import fs from "fs";
+
+const SESSIONS_FILE = path.join(process.cwd(), "sessions.json");
 
 // Setup storage maps for MCP sessions
 // Key: mcpToken (generated on client, persistent) -> Value: user's session details
@@ -19,6 +22,33 @@ const sessions = new Map<string, {
   settings?: ConversionSettings;
   updatedAt: number;
 }>();
+
+function loadPersistedSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const rawData = fs.readFileSync(SESSIONS_FILE, "utf8");
+      const parsed = JSON.parse(rawData);
+      console.log(`[MCP Server] Loading ${Object.keys(parsed).length} persisted sessions.`);
+      for (const [key, value] of Object.entries(parsed)) {
+        sessions.set(key, value as any);
+      }
+    }
+  } catch (err) {
+    console.error("[MCP Server] Failed to load persisted sessions:", err);
+  }
+}
+
+function savePersistedSessions() {
+  try {
+    const dataObj: Record<string, any> = {};
+    for (const [key, value] of sessions.entries()) {
+      dataObj[key] = value;
+    }
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(dataObj, null, 2), "utf8");
+  } catch (err) {
+    console.error("[MCP Server] Failed to save persisted sessions:", err);
+  }
+}
 
 // Key: sessionId (generated during SSE handshake) -> Value: active client SSE connection
 const activeMCPSessions = new Map<string, {
@@ -110,6 +140,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Load persisted sessions on start
+  loadPersistedSessions();
+
   // Use JSON parsing middleware for POST calls
   app.use(express.json());
 
@@ -133,22 +166,266 @@ async function startServer() {
       updatedAt: Date.now()
     });
 
+    savePersistedSessions();
+
     console.log(`[MCP Server] Synced local session for user: ${email || "Unknown"}`);
     res.json({ success: true, message: "Credentials synced successfully to server background." });
+  });
+
+  // Dynamic Javascript bridge script to expose Remote SSE MCP to Stdio Clients
+  app.get("/mcp-bridge.js", (req, res) => {
+    const token = req.query.token as string;
+    console.log(`[MCP Server] Request served for /mcp-bridge.js with query token: ${token || "none"}`);
+    if (!token) {
+      console.warn("[MCP Server] Warning: Request to /mcp-bridge.js did not supply a connection token");
+      return res.status(400).send("// Error: Missing required connection token query parameter");
+    }
+
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const host = req.headers["x-forwarded-host"] || req.get("host") || "localhost:3000";
+    const sseUrl = `${protocol}://${host}/api/mcp/sse?token=${token}`;
+
+    console.log(`[MCP Server] Generating client bridge script pointing to SSE endpoint: ${sseUrl}`);
+
+    const script = `/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+(async function boot() {
+  const http = await import("http");
+  const https = await import("https");
+  const readline = await import("readline");
+
+  const sseUrl = ${JSON.stringify(sseUrl)};
+  console.error("[MCP Bridge] Booting Google Docs MCP client bridge adapter...");
+  console.error("[MCP Bridge] Host/Protocol resolved: ${protocol} over ${host}");
+  console.error("[MCP Bridge] Stream Transport Target (SSE):", sseUrl);
+
+  function request(url, options = {}, redirectCount = 0) {
+    if (redirectCount > 5) {
+      return Promise.reject(new Error("Too many redirects"));
+    }
+    return new Promise((resolve, reject) => {
+      const parsed = new URL(url);
+      const client = parsed.protocol === "https:" ? https : http;
+      const headers = options.headers || {};
+      if (options.body) {
+        headers["Content-Length"] = Buffer.byteLength(options.body);
+      }
+      console.error(\`[MCP Bridge] POST Request to Callback: \${options.method || "POST"} \${url}\`);
+      if (options.body) {
+        console.error(\`[MCP Bridge] POST Payload size: \${headers["Content-Length"]} bytes: \${options.body.substring(0, 150)}...\`);
+      }
+
+      const req = client.request(url, {
+      method: options.method || "GET",
+      headers
+    }, (res) => {
+      console.error(\`[MCP Bridge] Received callback response status: \${res.statusCode}\`);
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        const dest = new URL(res.headers.location, url).toString();
+        console.error(\`[MCP Bridge] Redirection detected [Status \${res.statusCode}] to: \${dest}\`);
+        resolve(request(dest, options, redirectCount + 1));
+      } else {
+        resolve(res);
+      }
+    });
+
+    req.on("error", (err) => {
+      console.error("[MCP Bridge] HTTP client error inside callback transfer:", err);
+      reject(err);
+    });
+
+    if (options.body) {
+      req.write(options.body);
+    }
+    req.end();
+  });
+}
+
+function run(url = sseUrl, redirectCount = 0) {
+  if (redirectCount > 5) {
+    console.error("[MCP Bridge] Too many redirects for SSE connection.");
+    process.exit(1);
+  }
+  const parsedSSE = new URL(url);
+  const client = parsedSSE.protocol === "https:" ? https : http;
+
+  console.error(\`[MCP Bridge] Opening streaming HTTP connection to: \${url}\`);
+
+  const req = client.request(url, {
+    method: "GET",
+    headers: {
+      "Accept": "text/event-stream"
+    }
+  }, (res) => {
+    console.error(\`[MCP Bridge] Connection handshake completed! Status Code: \${res.statusCode}\`);
+    console.error(\`[MCP Bridge] Response Headers: \${JSON.stringify(res.headers)}\`);
+
+    if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+      const dest = new URL(res.headers.location, url).toString();
+      console.error(\`[MCP Bridge] Redirection detected on SSE handshake -> \${dest}\`);
+      run(dest, redirectCount + 1);
+      return;
+    }
+
+    if (res.statusCode !== 200) {
+      console.error("[MCP Bridge] Connect failed! HTTP status code:", res.statusCode);
+      if (res.statusCode === 401) {
+        console.error("[MCP Bridge] ERROR: Unauthorized. Check if your mcpToken matches the backend sync list.");
+      }
+      process.exit(1);
+    }
+
+    let buffer = "";
+    res.on("data", (chunk) => {
+      const chunkStr = chunk.toString();
+      console.error(\`[MCP Bridge] <<< Received raw data chunk (\${chunk.length} bytes): \${chunkStr.trim().replace(/\\n/g, " | ")}\`);
+      buffer += chunkStr;
+      let lines = buffer.split("\\n");
+      buffer = lines.pop() || "";
+
+      let currentEvent = "";
+      for (let line of lines) {
+        line = line.replace(/\\r$/, "");
+        if (line.startsWith("event:")) {
+          currentEvent = line.substring(6).trim();
+          console.error(\`[MCP Bridge] Parsed SSE Event: \${currentEvent}\`);
+        } else if (line.startsWith("data:")) {
+          const dataStr = line.substring(5).trim();
+          console.error(\`[MCP Bridge] Parsed SSE Data: \${dataStr.substring(0, 100)}\`);
+          handleSSEMessage(currentEvent, dataStr);
+          currentEvent = "";
+        } else if (line.trim() === "") {
+          currentEvent = "";
+        }
+      }
+    });
+
+    res.on("end", () => {
+      console.error("[MCP Bridge] SSE connection closed by remote server.");
+      process.exit(0);
+    });
+  });
+
+  req.on("error", (err) => {
+    console.error("[MCP Bridge] SSE transport connection error:", err);
+    process.exit(1);
+  });
+  req.end();
+}
+
+let messageUrl = "";
+const messageQueue = [];
+
+function handleSSEMessage(event, data) {
+  if (event === "endpoint") {
+    messageUrl = data;
+    console.error("[MCP Bridge] SUCCESS: Registered SSE session successfully. messageUrl =", messageUrl);
+    while (messageQueue.length > 0) {
+      sendMessage(messageQueue.shift());
+    }
+  } else if (event === "message") {
+    console.error("[MCP Bridge] JSON-RPC response from server forwarded to stdout:", data);
+    console.log(data);
+  }
+}
+
+let stdinStarted = false;
+function startStdinListener() {
+  if (stdinStarted) return;
+  stdinStarted = true;
+  console.error("[MCP Bridge] Standard input (stdin) command reader is active. Awaiting JSON-RPC requests...");
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+
+  rl.on("line", (line) => {
+    if (!line.trim()) return;
+    console.error(\`[MCP Bridge] >>> Read local line from Claude Code: \${line.substring(0, 150)}\`);
+    if (!messageUrl) {
+      console.error("[MCP Bridge] Queuing message because endpoint is not yet received.");
+      messageQueue.push(line);
+    } else {
+      sendMessage(line);
+    }
+  });
+
+  rl.on("close", () => {
+    console.error("[MCP Bridge] Standard input (stdin) stream closed. Shutting down.");
+    process.exit(0);
+  });
+}
+
+async function sendMessage(line) {
+  try {
+    const res = await request(messageUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: line
+    });
+
+    let resBody = "";
+    res.on("data", (chunk) => {
+      resBody += chunk.toString();
+    });
+    res.on("end", () => {
+      if (res.statusCode !== 200 && res.statusCode !== 202) {
+        console.error(\`[MCP Bridge] ERROR: Callback transmission failed with status \${res.statusCode}. Body: \${resBody.trim()}\`);
+      } else {
+        console.error(\`[MCP Bridge] Success forwarding line (StatusCode: \${res.statusCode})\`);
+      }
+    });
+  } catch (err) {
+    console.error("[MCP Bridge] Failed to forward stdin request:", err);
+  }
+}
+
+  startStdinListener();
+  run();
+})().catch(err => {
+  console.error("[MCP Bridge] Boot crash:", err);
+  process.exit(1);
+});
+`;
+
+    res.setHeader("Content-Type", "application/javascript");
+    res.send(script);
   });
 
   // SSE Transport connection endpoint
   app.get("/api/mcp/sse", (req, res) => {
     const token = req.query.token as string;
-    if (!token || !sessions.has(token)) {
+    console.log(`[MCP Server] GET /api/mcp/sse received. Token: ${token || "none"}`);
+    console.log("[MCP Server] Incoming request headers: " + JSON.stringify(req.headers));
+
+    if (!token) {
+      console.warn("[MCP Server] SSE handshake failed: No token provided.");
+      return res.status(401).send("Unauthorized: Missing token in query params.");
+    }
+
+    if (!sessions.has(token)) {
+      console.warn(`[MCP Server] SSE handshake unauthorized: Token "${token}" is not active or has been invalidated.`);
+      console.log("[MCP Server] Known registered tokens: " + JSON.stringify(Array.from(sessions.keys())));
       return res.status(401).send("Unauthorized: Invalid or non-existent MCP Connection Token. Access the /MCP setup page on the Web UI.");
     }
 
+    const sessionData = sessions.get(token);
+    console.log(`[MCP Server] SSE authorized for user ${sessionData?.email || "Unknown"}`);
+
     // Set standard Headers for Keep-Alive Server-Sent Events stream
     res.writeHead(200, {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive"
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Content-Encoding": "none"
     });
 
     const sessionId = Math.random().toString(36).substring(2, 11);
@@ -160,11 +437,17 @@ async function startServer() {
     const messageUrl = `${protocol}://${host}/api/mcp/message?sessionId=${sessionId}`;
 
     res.write(`event: endpoint\ndata: ${messageUrl}\n\n`);
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
     console.log(`[MCP Server] SSE client connected: sessionId=${sessionId} (Token info synced)`);
 
     // Standard heartbeat comment frame to prevent connection time outs on ingress reverse proxy layers
     const keepAliveTimer = setInterval(() => {
       res.write(":\n\n");
+      if (typeof (res as any).flush === "function") {
+        (res as any).flush();
+      }
     }, 20000);
 
     req.on("close", () => {
@@ -177,21 +460,27 @@ async function startServer() {
   // Client messaging target containing JSON-RPC operations
   app.post("/api/mcp/message", async (req, res) => {
     const sessionId = req.query.sessionId as string;
-    const clientSession = activeMCPSessions.get(sessionId);
+    console.log(`[MCP Server] POST /api/mcp/message invoked. sessionId = ${sessionId || "none"}`);
 
+    const clientSession = activeMCPSessions.get(sessionId);
     if (!clientSession) {
-      return res.status(404).json({ error: "Active MCP transmission session not found." });
+      console.warn(`[MCP Server] WARNING: Message transmission failed. No active SSE stream found for sessionId: "${sessionId}"`);
+      return res.status(404).json({ error: `Active MCP transmission session "${sessionId}" not found.` });
     }
 
     const { id, method, params } = req.body;
+    console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(params || {}));
+
     const { res: sseRes, mcpToken } = clientSession;
     const sessionData = sessions.get(mcpToken);
 
     if (!sessionData) {
+      console.warn(`[MCP Server] WARNING: Credentials linked to mcpToken "${mcpToken}" not found or have expired.`);
       return res.status(401).json({ error: "Linked session credentials have expired or are missing." });
     }
 
     const { accessToken, settings = DEFAULT_SETTINGS } = sessionData;
+    console.log(`[MCP Server] Credentials verified for user: ${sessionData.email}. Workspace AccessToken present? ${!!accessToken}`);
 
     try {
       if (method === "initialize") {
@@ -209,11 +498,16 @@ async function startServer() {
             }
           }
         };
+        console.log(`[MCP Server] Responding to "initialize". Payload to SSE:`, JSON.stringify(response));
         sseRes.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+        if (typeof (sseRes as any).flush === "function") {
+          (sseRes as any).flush();
+        }
         return res.status(200).send("Accepted");
       }
 
       if (method === "notifications/initialized") {
+        console.log('[MCP Server] Received "notifications/initialized" signal from client. Handshake fully complete!');
         return res.status(200).send("Accepted");
       }
 
@@ -244,32 +538,45 @@ async function startServer() {
             ]
           }
         };
+        console.log(`[MCP Server] Responding to "tools/list". Payload to SSE:`, JSON.stringify(response));
         sseRes.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+        if (typeof (sseRes as any).flush === "function") {
+          (sseRes as any).flush();
+        }
         return res.status(200).send("Accepted");
       }
 
       if (method === "tools/call") {
         const { name, arguments: args } = params || {};
+        console.log(`[MCP Server] Executing tools/call for tool "${name}"`);
         if (name === "convert_markdown_to_gdoc") {
           const markdown = args?.markdown_content || "";
           const titleName = args?.document_name || "Claude Converted Doc";
 
-          console.log(`[MCP Server] Executing conversion for tool: ${titleName}`);
+          console.log(`[MCP Server] Running conversion processor for Document Title: "${titleName}"`);
 
           try {
             // Parse Markdown Elements
+            console.log(`[MCP Server] Parsing markdown input string (${markdown.length} characters)...`);
             const parsed = parseMarkdown(markdown, titleName, settings.headingMapping);
+            console.log(`[MCP Server] Parse finished! Found title: "${parsed.title}", Elements count: ${parsed.elements.length}`);
 
             // Construct new clean Google Doc
+            console.log("[MCP Server] Initializing new blank Google Document in standard Cloud Workspace...");
             const documentId = await createBlankDoc(accessToken, parsed.title);
+            console.log(`[MCP Server] Document successfully instantiated with ID: ${documentId}`);
 
             // Style content and headers dynamically
+            console.log("[MCP Server] Styling document structures and applying format templates...");
             await styleDocContent(accessToken, documentId, parsed.elements, settings);
+            console.log("[MCP Server] Formatting rules applied successfully!");
 
             // Move final styled documents in root Google Drive (default root)
+            console.log("[MCP Server] Relocating Google Document file to target drive location: Root Folder");
             await moveFileToFolder(accessToken, documentId, "root");
 
             const docUrl = `https://docs.google.com/document/d/${documentId}/edit`;
+            console.log(`[MCP Server] Conversion process is complete! Google Doc URL: ${docUrl}`);
 
             const successRes = {
               jsonrpc: "2.0",
@@ -284,6 +591,9 @@ async function startServer() {
               }
             };
             sseRes.write(`event: message\ndata: ${JSON.stringify(successRes)}\n\n`);
+            if (typeof (sseRes as any).flush === "function") {
+              (sseRes as any).flush();
+            }
             return res.status(200).send("Accepted");
           } catch (execErr: any) {
             console.error("[MCP Server] Tool operational conversion failure:", execErr);
@@ -301,12 +611,18 @@ async function startServer() {
               }
             };
             sseRes.write(`event: message\ndata: ${JSON.stringify(errRes)}\n\n`);
+            if (typeof (sseRes as any).flush === "function") {
+              (sseRes as any).flush();
+            }
             return res.status(200).send("Accepted");
           }
+        } else {
+          console.warn(`[MCP Server] WARNING: Client requested unknown tool: "${name}"`);
         }
       }
 
       // Default unhandled operation handler
+      console.warn(`[MCP Server] Unhandled JSON-RPC method: "${method}"`);
       const fallbackResponse = {
         jsonrpc: "2.0",
         id,
@@ -316,10 +632,13 @@ async function startServer() {
         }
       };
       sseRes.write(`event: message\ndata: ${JSON.stringify(fallbackResponse)}\n\n`);
-      res.status(200).send("Accepted");
+      if (typeof (sseRes as any).flush === "function") {
+        (sseRes as any).flush();
+      }
+      return res.status(200).send("Accepted");
     } catch (routeErr: any) {
-      console.error("[MCP Server] Message handling route crash:", routeErr);
-      res.status(500).json({ error: routeErr.message || "Internal server messaging exception." });
+      console.error("[MCP Server] JSON-RPC Message handling route crash:", routeErr);
+      return res.status(500).json({ error: routeErr.message || "Internal server messaging exception." });
     }
   });
 
