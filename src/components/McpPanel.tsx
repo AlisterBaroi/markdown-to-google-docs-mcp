@@ -43,7 +43,10 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const codeCli = `claude mcp add markdown-to-gdocs node "-e" "fetch('${appOrigin}/mcp-bridge.js?token=${mcpToken}').then(r=>r.text()).then(t=>eval(t))"`;
+  // NOTE: the `--` separator is required. Without it `claude mcp add` interprets the
+  // node `-e` flag as its OWN `-e/--env` option and swallows the `fetch(...?token=...)`
+  // string as a KEY=VALUE env var (split on the first `=`), leaving node with no script.
+  const codeCli = `claude mcp add markdown-to-gdocs -- node -e "fetch('${appOrigin}/mcp-bridge.js?token=${mcpToken}').then(r=>r.text()).then(t=>eval(t))"`;
 
   const localScriptCode = `/**
  * Google Docs MCP Client Bridge

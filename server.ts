@@ -10,8 +10,12 @@ import { parseMarkdown } from "./src/utils/markdownParser";
 import { createBlankDoc, styleDocContent, moveFileToFolder } from "./src/utils/docsExporter";
 import { ConversionSettings } from "./src/types";
 import fs from "fs";
+import os from "os";
 
-const SESSIONS_FILE = path.join(process.cwd(), "sessions.json");
+// Stored OUTSIDE the project tree on purpose: it holds live OAuth access tokens
+// (never commit it), and keeping it out of the Vite-watched root avoids a
+// write -> page-reload -> re-sync -> write feedback loop in dev.
+const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(os.tmpdir(), "md-to-gdocs-sessions.json");
 
 // Setup storage maps for MCP sessions
 // Key: mcpToken (generated on client, persistent) -> Value: user's session details
