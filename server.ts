@@ -473,7 +473,19 @@ async function sendMessage(line) {
     }
 
     const { id, method, params } = req.body;
-    console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(params || {}));
+    // Redact long string args (e.g. markdown_content) so document contents never hit the logs.
+    const logParams = (() => {
+      const p = params || {};
+      if (p.arguments && typeof p.arguments === "object") {
+        const args: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(p.arguments)) {
+          args[k] = typeof v === "string" && v.length > 80 ? `<string: ${v.length} chars redacted>` : v;
+        }
+        return { ...p, arguments: args };
+      }
+      return p;
+    })();
+    console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(logParams));
 
     const { res: sseRes, mcpToken } = clientSession;
     const sessionData = sessions.get(mcpToken);

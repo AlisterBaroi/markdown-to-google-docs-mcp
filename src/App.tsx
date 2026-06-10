@@ -557,7 +557,7 @@ export default function App() {
               <div>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Convert Markdown Files to Google Docs</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2.5 max-w-md mx-auto leading-relaxed">
-                  Connect your account to parse lists, titles, and sectional header presets automatically. Style typography and margins, and organize your files within customized Drive folders.
+                  Connect your Google account to parse markdown (.md) files to Google Docs with formatting automatically. Style + save custom formatting for future uses, and organize your files within customized Drive folders.
                 </p>
               </div>
 

@@ -48,207 +48,207 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
   // string as a KEY=VALUE env var (split on the first `=`), leaving node with no script.
   const codeCli = `claude mcp add markdown-to-gdocs -- node -e "fetch('${appOrigin}/mcp-bridge.js?token=${mcpToken}').then(r=>r.text()).then(t=>eval(t))"`;
 
-  const localScriptCode = `/**
- * Google Docs MCP Client Bridge
- * Save this file as "gdocs-mcp.js" in your project directory or home directory
- */
-
-const http = require("http");
-const https = require("https");
-const readline = require("readline");
-
-const sseUrl = "${sseUrl}";
-console.error("[MCP Bridge] Booting Google Docs MCP client bridge adapter...");
-console.error("[MCP Bridge] Stream Transport Target (SSE):", sseUrl);
-
-function request(url, options = {}, redirectCount = 0) {
-  if (redirectCount > 5) {
-    return Promise.reject(new Error("Too many redirects"));
-  }
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const client = parsed.protocol === "https:" ? https : http;
-    const headers = options.headers || {};
-    if (options.body) {
-      headers["Content-Length"] = Buffer.byteLength(options.body);
-    }
-    console.error(\`[MCP Bridge] POST Request to Callback: \${options.method || "POST"} \${url}\`);
-    if (options.body) {
-      console.error(\`[MCP Bridge] POST Payload size: \${headers["Content-Length"]} bytes: \${options.body.substring(0, 150)}...\`);
-    }
-
-    const req = client.request(url, {
-      method: options.method || "GET",
-      headers
-    }, (res) => {
-      console.error(\`[MCP Bridge] Received callback response status: \${res.statusCode}\`);
-      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
-        const dest = new URL(res.headers.location, url).toString();
-        console.error(\`[MCP Bridge] Redirection detected [Status \${res.statusCode}] to: \${dest}\`);
-        resolve(request(dest, options, redirectCount + 1));
-      } else {
-        resolve(res);
-      }
-    });
-
-    req.on("error", (err) => {
-      console.error("[MCP Bridge] HTTP client error inside callback transfer:", err);
-      reject(err);
-    });
-
-    if (options.body) {
-      req.write(options.body);
-    }
-    req.end();
-  });
-}
-
-function run(url = sseUrl, redirectCount = 0) {
-  if (redirectCount > 5) {
-    console.error("[MCP Bridge] Too many redirects for SSE connection.");
-    process.exit(1);
-  }
-  const parsedSSE = new URL(url);
-  const client = parsedSSE.protocol === "https:" ? https : http;
-
-  console.error(\`[MCP Bridge] Opening streaming HTTP connection to: \${url}\`);
-
-  const req = client.request(url, {
-    method: "GET",
-    headers: {
-      "Accept": "text/event-stream"
-    }
-  }, (res) => {
-    console.error(\`[MCP Bridge] Connection handshake completed! Status Code: \${res.statusCode}\`);
-    console.error(\`[MCP Bridge] Response Headers: \${JSON.stringify(res.headers)}\`);
-
-    if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
-      const dest = new URL(res.headers.location, url).toString();
-      console.error(\`[MCP Bridge] Redirection detected on SSE handshake -> \${dest}\`);
-      run(dest, redirectCount + 1);
-      return;
-    }
-
-    if (res.statusCode !== 200) {
-      console.error("[MCP Bridge] Connect failed! HTTP status code:", res.statusCode);
-      if (res.statusCode === 401) {
-        console.error("[MCP Bridge] ERROR: Unauthorized. Check if your mcpToken matches the backend sync list.");
-      }
-      process.exit(1);
-    }
-
-    let buffer = "";
-    res.on("data", (chunk) => {
-      const chunkStr = chunk.toString();
-      console.error(\`[MCP Bridge] <<< Received raw data chunk (\${chunk.length} bytes): \${chunkStr.trim().replace(/\\n/g, " | ")}\`);
-      buffer += chunkStr;
-      let lines = buffer.split("\\n");
-      buffer = lines.pop() || "";
-
-      let currentEvent = "";
-      for (let line of lines) {
-        line = line.replace(/\\r$/, "");
-        if (line.startsWith("event:")) {
-          currentEvent = line.substring(6).trim();
-          console.error(\`[MCP Bridge] Parsed SSE Event: \${currentEvent}\`);
-        } else if (line.startsWith("data:")) {
-          const dataStr = line.substring(5).trim();
-          console.error(\`[MCP Bridge] Parsed SSE Data: \${dataStr.substring(0, 100)}\`);
-          handleSSEMessage(currentEvent, dataStr);
-          currentEvent = "";
-        } else if (line.trim() === "") {
-          currentEvent = "";
-        }
-      }
-    });
-
-    res.on("end", () => {
-      console.error("[MCP Bridge] SSE connection closed by remote server.");
-      process.exit(0);
-    });
-  });
-
-  req.on("error", (err) => {
-    console.error("[MCP Bridge] SSE transport connection error:", err);
-    process.exit(1);
-  });
-  req.end();
-}
-
-let messageUrl = "";
-const messageQueue = [];
-
-function handleSSEMessage(event, data) {
-  if (event === "endpoint") {
-    messageUrl = data;
-    console.error("[MCP Bridge] SUCCESS: Registered SSE session successfully. messageUrl =", messageUrl);
-    while (messageQueue.length > 0) {
-      sendMessage(messageQueue.shift());
-    }
-  } else if (event === "message") {
-    console.error("[MCP Bridge] JSON-RPC response from server forwarded to stdout:", data);
-    console.log(data);
-  }
-}
-
-let stdinStarted = false;
-function startStdinListener() {
-  if (stdinStarted) return;
-  stdinStarted = true;
-  console.error("[MCP Bridge] Standard input (stdin) command reader is active. Awaiting JSON-RPC requests...");
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-  });
-
-  rl.on("line", (line) => {
-    if (!line.trim()) return;
-    console.error(\`[MCP Bridge] >>> Read local line from Claude Code: \${line.substring(0, 150)}\`);
-    if (!messageUrl) {
-      console.error("[MCP Bridge] Queuing message because endpoint is not yet received.");
-      messageQueue.push(line);
-    } else {
-      sendMessage(line);
-    }
-  });
-
-  rl.on("close", () => {
-    console.error("[MCP Bridge] Standard input (stdin) stream closed. Shutting down.");
-    process.exit(0);
-  });
-}
-
-async function sendMessage(line) {
-  try {
-    const res = await request(messageUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: line
-    });
-
-    let resBody = "";
-    res.on("data", (chunk) => {
-      resBody += chunk.toString();
-    });
-    res.on("end", () => {
-      if (res.statusCode !== 200 && res.statusCode !== 202) {
-        console.error(\`[MCP Bridge] ERROR: Callback transmission failed with status \${res.statusCode}. Body: \${resBody.trim()}\`);
-      } else {
-        console.error(\`[MCP Bridge] Success forwarding line (StatusCode: \${res.statusCode})\`);
-      }
-    });
-  } catch (err) {
-    console.error("[MCP Bridge] Failed to forward stdin request:", err);
-  }
-}
-
-startStdinListener();
-run();
-`;
+  const localScriptCode = [
+    "/**",
+    " * Google Docs MCP Client Bridge",
+    " * Save this file as \"gdocs-mcp.js\" in your project directory or home directory",
+    " */",
+    "",
+    "const http = require(\"http\");",
+    "const https = require(\"https\");",
+    "const readline = require(\"readline\");",
+    "",
+    `const sseUrl = "${sseUrl}";`,
+    "console.error(\"[MCP Bridge] Booting Google Docs MCP client bridge adapter...\");",
+    "console.error(\"[MCP Bridge] Stream Transport Target (SSE):\", sseUrl);",
+    "",
+    "function request(url, options = {}, redirectCount = 0) {",
+    "  if (redirectCount > 5) {",
+    "    return Promise.reject(new Error(\"Too many redirects\"));",
+    "  }",
+    "  return new Promise((resolve, reject) => {",
+    "    const parsed = new URL(url);",
+    "    const client = parsed.protocol === \"https:\" ? https : http;",
+    "    const headers = options.headers || {};",
+    "    if (options.body) {",
+    "      headers[\"Content-Length\"] = Buffer.byteLength(options.body);",
+    "    }",
+    "    console.error(\"[MCP Bridge] POST Request to Callback: \" + (options.method || \"POST\") + \" \" + url);",
+    "    if (options.body) {",
+    "      console.error(\"[MCP Bridge] POST Payload size: \" + headers[\"Content-Length\"] + \" bytes: \" + options.body.substring(0, 150) + \"...\");",
+    "    }",
+    "",
+    "    const req = client.request(url, {",
+    "      method: options.method || \"GET\",",
+    "      headers",
+    "    }, (res) => {",
+    "      console.error(\"[MCP Bridge] Received callback response status: \" + res.statusCode);",
+    "      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {",
+    "        const dest = new URL(res.headers.location, url).toString();",
+    "        console.error(\"[MCP Bridge] Redirection detected [Status \" + res.statusCode + \"] to: \" + dest);",
+    "        resolve(request(dest, options, redirectCount + 1));",
+    "      } else {",
+    "        resolve(res);",
+    "      }",
+    "    });",
+    "",
+    "    req.on(\"error\", (err) => {",
+    "      console.error(\"[MCP Bridge] HTTP client error inside callback transfer:\", err);",
+    "      reject(err);",
+    "    });",
+    "",
+    "    if (options.body) {",
+    "      req.write(options.body);",
+    "    }",
+    "    req.end();",
+    "  });",
+    "}",
+    "",
+    "function run(url = sseUrl, redirectCount = 0) {",
+    "  if (redirectCount > 5) {",
+    "    console.error(\"[MCP Bridge] Too many redirects for SSE connection.\");",
+    "    process.exit(1);",
+    "  }",
+    "  const parsedSSE = new URL(url);",
+    "  const client = parsedSSE.protocol === \"https:\" ? https : http;",
+    "",
+    "  console.error(\"[MCP Bridge] Opening streaming HTTP connection to: \" + url);",
+    "",
+    "  const req = client.request(url, {",
+    "    method: \"GET\",",
+    "    headers: {",
+    "      \"Accept\": \"text/event-stream\"",
+    "    }",
+    "  }, (res) => {",
+    "    console.error(\"[MCP Bridge] Connection handshake completed! Status Code: \" + res.statusCode);",
+    "    console.error(\"[MCP Bridge] Response Headers: \" + JSON.stringify(res.headers));",
+    "",
+    "    if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {",
+    "      const dest = new URL(res.headers.location, url).toString();",
+    "      console.error(\"[MCP Bridge] Redirection detected on SSE handshake -> \" + dest);",
+    "      run(dest, redirectCount + 1);",
+    "      return;",
+    "    }",
+    "",
+    "    if (res.statusCode !== 200) {",
+    "      console.error(\"[MCP Bridge] Connect failed! HTTP status code:\", res.statusCode);",
+    "      if (res.statusCode === 401) {",
+    "        console.error(\"[MCP Bridge] ERROR: Unauthorized. Check if your mcpToken matches the backend sync list.\");",
+    "      }",
+    "      process.exit(1);",
+    "    }",
+    "",
+    "    let buffer = \"\";",
+    "    res.on(\"data\", (chunk) => {",
+    "      const chunkStr = chunk.toString();",
+    "      buffer += chunkStr;",
+    "      let lines = buffer.split(\"\\n\");",
+    "      buffer = lines.pop() || \"\";",
+    "",
+    "      let currentEvent = \"\";",
+    "      for (let line of lines) {",
+    "        line = line.replace(/\\r$/, \"\");",
+    "        if (line.startsWith(\"event:\")) {",
+    "          currentEvent = line.substring(6).trim();",
+    "          console.error(\"[MCP Bridge] Parsed SSE Event: \" + currentEvent);",
+    "        } else if (line.startsWith(\"data:\")) {",
+    "          const dataStr = line.substring(5).trim();",
+    "          console.error(\"[MCP Bridge] Parsed SSE Data: \" + dataStr.substring(0, 100));",
+    "          handleSSEMessage(currentEvent, dataStr);",
+    "          currentEvent = \"\";",
+    "        } else if (line.trim() === \"\") {",
+    "          currentEvent = \"\";",
+    "        }",
+    "      }",
+    "    });",
+    "",
+    "    res.on(\"end\", () => {",
+    "      console.error(\"[MCP Bridge] SSE connection closed by remote server.\");",
+    "      process.exit(0);",
+    "    });",
+    "  });",
+    "",
+    "  req.on(\"error\", (err) => {",
+    "    console.error(\"[MCP Bridge] SSE transport connection error:\", err);",
+    "    process.exit(1);",
+    "  });",
+    "  req.end();",
+    "}",
+    "",
+    "let messageUrl = \"\";",
+    "const messageQueue = [];",
+    "",
+    "function handleSSEMessage(event, data) {",
+    "  if (event === \"endpoint\") {",
+    "    messageUrl = data;",
+    "    console.error(\"[MCP Bridge] SUCCESS: Registered SSE session successfully. messageUrl =\", messageUrl);",
+    "    while (messageQueue.length > 0) {",
+    "      sendMessage(messageQueue.shift());",
+    "    }",
+    "  } else if (event === \"message\") {",
+    "    console.error(\"[MCP Bridge] Forwarding server JSON-RPC response to stdout:\", data);",
+    "    console.log(data);",
+    "  }",
+    "}",
+    "",
+    "let stdinStarted = false;",
+    "function startStdinListener() {",
+    "  if (stdinStarted) return;",
+    "  stdinStarted = true;",
+    "  console.error(\"[MCP Bridge] Standard input (stdin) command reader is active. Awaiting JSON-RPC requests...\");",
+    "",
+    "  const rl = readline.createInterface({",
+    "    input: process.stdin,",
+    "    output: process.stdout,",
+    "    terminal: false",
+    "  });",
+    "",
+    "  rl.on(\"line\", (line) => {",
+    "    if (!line.trim()) return;",
+    "    console.error(\"[MCP Bridge] >>> Read local line from Claude Code: \" + line.substring(0, 150));",
+    "    if (!messageUrl) {",
+    "      console.error(\"[MCP Bridge] Queuing message because endpoint is not yet received.\");",
+    "      messageQueue.push(line);",
+    "    } else {",
+    "      sendMessage(line);",
+    "    }",
+    "  });",
+    "",
+    "  rl.on(\"close\", () => {",
+    "    console.error(\"[MCP Bridge] Standard input (stdin) stream closed. Shutting down.\");",
+    "    process.exit(0);",
+    "  });",
+    "}",
+    "",
+    "async function sendMessage(line) {",
+    "  try {",
+    "    const res = await request(messageUrl, {",
+    "      method: \"POST\",",
+    "      headers: {",
+    "        \"Content-Type\": \"application/json\"",
+    "      },",
+    "      body: line",
+    "    });",
+    "",
+    "    let resBody = \"\";",
+    "    res.on(\"data\", (chunk) => {",
+    "      resBody += chunk.toString();",
+    "    });",
+    "    res.on(\"end\", () => {",
+    "      if (res.statusCode !== 200 && res.statusCode !== 202) {",
+    "        console.error(\"[MCP Bridge] ERROR: Callback transmission failed with status \" + res.statusCode + \". Body: \" + resBody.trim());",
+    "      } else {",
+    "        console.error(\"[MCP Bridge] Success forwarding line (StatusCode: \" + res.statusCode + \")\");",
+    "      }",
+    "    });",
+    "  } catch (err) {",
+    "    console.error(\"[MCP Bridge] Failed to forward stdin request:\", err);",
+    "  }",
+    "}",
+    "",
+    "startStdinListener();",
+    "run();"
+  ].join("\n");
 
   const codeJson = JSON.stringify({
     mcpServers: {
@@ -399,18 +399,8 @@ run();
             {activeTab === "cli" && (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                  Add this application as a remote server to **Claude Code** (Anthropic's interactive CLI agent). This exposes the conversion tool to let Claude build styled Google Documents directly from your workspace directory.
+                  Add this application as a remote MCP Server to Claude Code (Anthropic's interactive CLI agent). This exposes the conversion tool to let Claude build styled Google Documents directly from your workspace directory.
                 </p>
-
-                <div className="bg-amber-50 dark:bg-amber-955/20 border border-amber-200 dark:border-amber-900/30 rounded-xl p-3.5 space-y-1.5">
-                  <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
-                    💡 Why did standard registration fail with ENOENT?
-                  </h4>
-                  <p className="text-[11px] text-amber-900/80 dark:text-slate-400 leading-normal">
-                    Claude Code only communicates through a program spawned as a subprocess communicating over <strong>stdio</strong>.
-                    Standard shell quote escaping (such as single/double nested quotes or arrow functions <code>{"=>"}</code>) inside complex one-liners often gets mangled differently in CMD, PowerShell, and Zsh. This can cause Claude to misinterpret the command, leading to an operating system <strong>ENOENT (File Not Found)</strong> error.
-                  </p>
-                </div>
 
                 <div className="space-y-5">
                   {/* Step 1 */}
@@ -424,10 +414,32 @@ run();
                       {/* Method A */}
                       <div className="border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
                         <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          Method A: Local Bridge Script (Recommended & Bulletproof)
+                          Method A: One-Liner Command (Unix Shells)
                         </span>
                         <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
-                          By creating a small file, you avoid all shell quote-escaping problems on Windows and macOS.
+                          If you are on a native Linux or macOS Zsh terminal, you can run this direct payload fetch:
+                        </p>
+                        <div className="relative">
+                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-x-auto border border-slate-800 break-all whitespace-pre-wrap pr-12 leading-relaxed">
+                            {codeCli}
+                          </pre>
+                          <button
+                            onClick={() => handleCopy(codeCli, "cli")}
+                            className="absolute right-2.5 top-2.5 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer border border-white/5"
+                            title="Copy command"
+                          >
+                            {copiedKey === "cli" ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Method B */}
+                      <div className="border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
+                        <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Method B: Local Bridge Script (Recommended for Windows & PowerShell)
+                        </span>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
+                          By creating a small file, you avoid all shell quote-escaping problems, especially on Windows or custom shells.
                         </p>
                         <ol className="list-decimal list-inside text-[11px] text-slate-500 dark:text-slate-450 space-y-1">
                           <li>Create a file named <code className="font-mono text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-205 dark:border-slate-800">gdocs-mcp.js</code> in your project folder.</li>
@@ -436,7 +448,7 @@ run();
 
                         {/* Local Code block */}
                         <div className="relative">
-                          <pre className="p-3 bg-slate-950 text-slate-200 font-mono text-[10px] rounded-xl overflow-x-auto border border-slate-800 max-h-[140px] leading-relaxed">
+                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-auto border border-slate-800 max-h-[140px] leading-relaxed">
                             {localScriptCode}
                           </pre>
                           <button
@@ -452,7 +464,7 @@ run();
                           Now, run this simple command in your terminal:
                         </p>
                         <div className="relative">
-                          <pre className="p-3 bg-slate-950 text-slate-150 font-mono text-xs rounded-xl overflow-x-auto border border-slate-800 leading-relaxed break-all whitespace-pre-wrap">
+                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-x-auto border border-slate-800 leading-relaxed break-all whitespace-pre-wrap">
                             {`claude mcp add markdown-to-gdocs node ./gdocs-mcp.js`}
                           </pre>
                           <button
@@ -461,28 +473,6 @@ run();
                             title="Copy simple command"
                           >
                             {copiedKey === "cliLocal" ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Method B */}
-                      <div className="border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
-                        <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          Method B: One-Liner Command (Unix Shells)
-                        </span>
-                        <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
-                          If you are on a native Linux or macOS Zsh terminal, you can run this direct payload fetch:
-                        </p>
-                        <div className="relative">
-                          <pre className="p-3 bg-slate-950 text-slate-100 font-mono text-[10px] rounded-xl overflow-x-auto border border-slate-800 break-all whitespace-pre-wrap pr-12 leading-relaxed">
-                            {codeCli}
-                          </pre>
-                          <button
-                            onClick={() => handleCopy(codeCli, "cli")}
-                            className="absolute right-2.5 top-2.5 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer border border-white/5"
-                            title="Copy command"
-                          >
-                            {copiedKey === "cli" ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         </div>
                       </div>
@@ -503,7 +493,7 @@ run();
                         &quot;Convert this file README.md to google docs format using markdown-to-gdocs&quot;
                       </p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                        Claude Code will fetch your workspace session, upload the text to Google, style paragraphs matching your settings, and print out the completed Google Doc hyperlink!
+                        Claude Code will fetch your workspace session, upload the text, style formatting matching your settings, save the document to the root of your google drive, and print out the completed Google Doc hyperlink!
                       </p>
                     </div>
                   </div>
