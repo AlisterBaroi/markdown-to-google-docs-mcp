@@ -4,11 +4,21 @@ title = "gitleaks config"
 [extend]
 useDefault = true
 
+# Flag Cloud Build substitution values hardcoded into the repo. These (project ID, region,
+# Artifact Registry host/repo, service/repo name, trigger ID) belong in the Cloud Build
+# TRIGGER's substitution variables — never committed here. The rule matches by the substitution
+# KEY name (so it doesn't embed the actual values), and ignores empty defaults like `_X: ''`.
+[[rules]]
+id = "cloudbuild-hardcoded-substitution"
+description = "Hardcoded Cloud Build substitution value (keep these in the trigger, not the repo)"
+regex = '''(?:_AR_PROJECT_ID|_AR_HOSTNAME|_AR_REPOSITORY|_DEPLOY_REGION|_SERVICE_NAME|_TRIGGER_ID|REPO_NAME)\s*:\s*["']?[A-Za-z0-9][\w./-]*'''
+keywords = ["_ar_project_id", "_ar_hostname", "_ar_repository", "_deploy_region", "_service_name", "_trigger_id", "repo_name"]
+
 [allowlist]
-description = """
-Firebase WEB app config is public by design — apiKey/appId/authDomain/etc. are shipped in
-the client bundle and access is controlled by Firebase Security Rules + authorized domains,
-not by keeping these values secret. This file must ONLY ever contain public web config;
-never put an OAuth client secret, service-account key, or private key here.
-"""
+description = "Known-safe values that are not real secrets."
+# Firebase WEB config is public by design (apiKey/appId/etc. ship in the client bundle); this
+# file must ONLY ever contain public web config — never a client secret or private key.
 paths = ['''firebase-applet-config.*\.json''']
+# 'REDACTED' is our own redaction placeholder left in git history; 'md-to-docs' is the service
+# name, already public in the Cloud Run URL. Neither is a real secret.
+regexes = ['''REDACTED''', '''md-to-docs''']
