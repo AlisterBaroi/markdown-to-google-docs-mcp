@@ -1,0 +1,27 @@
+name: Enforce PR source branch
+
+# Policy: pull requests into `main` may only come from `dev`.
+# GitHub branch rules can require *a* PR but can't restrict its source branch, so we enforce
+# it here and make this job a required status check on `main` (see the repo rulesets).
+on:
+  pull_request:
+    branches: [main]
+
+# Read-only; no secrets needed.
+permissions:
+  contents: read
+
+jobs:
+  verify-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require PRs into main to come from dev
+        # Pass the (attacker-influenceable) branch name via env, never inline into the script.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "dev" ]; then
+            echo "::error::PRs into 'main' must come from 'dev' (got '$HEAD_REF'). Merge your changes into 'dev' first, then open a dev → main PR."
+            exit 1
+          fi
+          echo "OK: PR source branch is 'dev'."

@@ -16,9 +16,7 @@ Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive 
      markdown, google-docs, google-drive, markdown-to-google-docs, mcp,
      model-context-protocol, claude, claude-code, mermaid, react, typescript, firebase -->
 
-<!-- 👉 TIP: a screenshot or short demo GIF here is the single biggest driver of stars.
-     Drop one in /assets and reference it (alt text helps search): -->
-<!-- ![Markdown to Google Docs converter demo](assets/demo.gif) -->
+![Markdown to Google Docs converter — demo UI](.github/demo.png)
 
 ---
 
