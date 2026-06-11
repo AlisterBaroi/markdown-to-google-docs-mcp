@@ -1,0 +1,48 @@
+# GKE Deployment + Service for Markdown -> Google Docs. See docs/GKE_Deployment.md
+# EDIT the `image:` below to your Artifact Registry path before applying:
+#   kubectl apply -f k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: markdown-to-google-docs-mcp
+  labels: { app: markdown-to-google-docs-mcp }
+spec:
+  replicas: 1 # keep at 1 — in-memory MCP state needs a single pod
+  selector:
+    matchLabels: { app: markdown-to-google-docs-mcp }
+  template:
+    metadata:
+      labels: { app: markdown-to-google-docs-mcp }
+    spec:
+      containers:
+        - name: app
+          image: REGION-docker.pkg.dev/PROJECT/REPO/markdown-to-google-docs-mcp:v1 # <-- EDIT
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NODE_ENV
+              value: "production"
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "1", memory: "2Gi" } # headroom for headless Chromium
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: markdown-to-google-docs-mcp
+spec:
+  type: ClusterIP
+  selector: { app: markdown-to-google-docs-mcp }
+  ports:
+    - port: 80
+      targetPort: 8080

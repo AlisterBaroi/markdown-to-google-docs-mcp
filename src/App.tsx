@@ -835,7 +835,7 @@ export default function App() {
       {/* Absolute Bottom Status Bar */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-5 transition-colors duration-200" id="application-footer">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-3 items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
-          <p className="text-center sm:text-left">© 2026 <a href="https://github.com/alisterbaroi" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">Alister Baroi</a>. All rights reserved.</p>
+          <p className="text-center sm:text-left">Star on <a href="https://github.com/AlisterBaroi/markdown-to-google-docs-mcp" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">GitHub repo</a> · built by <a href="https://github.com/AlisterBaroi" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">Alister Baroi</a></p>
           <p className="text-center text-slate-400 dark:text-slate-500">Version {__APP_VERSION__}</p>
           <p className="text-center sm:text-right text-slate-400 dark:text-slate-500">
             Uses{' '}
