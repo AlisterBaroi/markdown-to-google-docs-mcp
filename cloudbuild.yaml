@@ -60,16 +60,18 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  _TRIGGER_ID: REDACTED
-  REPO_NAME: REDACTED
-  _DEPLOY_REGION: REDACTED
-  _AR_HOSTNAME: REDACTED
-  _AR_REPOSITORY: REDACTED
-  _AR_PROJECT_ID: REDACTED
-  _PLATFORM: managed
-  _SERVICE_NAME: md-to-docs
-  # Real values are provided by the trigger's substitution variables (kept out of the repo).
-  # These empty defaults just document the contract.
+  # All values are supplied by the Cloud Build TRIGGER's substitution variables — they are
+  # NOT hardcoded here (kept out of the repo). These empty defaults just document the keys
+  # the trigger must provide. Cloud Build can't read GitHub Actions secrets — this is the
+  # equivalent mechanism for a Cloud Build pipeline.
+  _TRIGGER_ID: ''
+  REPO_NAME: ''
+  _DEPLOY_REGION: ''
+  _AR_HOSTNAME: ''
+  _AR_REPOSITORY: ''
+  _AR_PROJECT_ID: ''
+  _PLATFORM: ''
+  _SERVICE_NAME: ''
   _VITE_FIREBASE_API_KEY: ''
   _VITE_FIREBASE_AUTH_DOMAIN: ''
   _VITE_FIREBASE_PROJECT_ID: ''
