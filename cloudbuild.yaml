@@ -1,0 +1,85 @@
+# Cloud Build pipeline: build image → push to Artifact Registry → deploy to Cloud Run.
+# Point the trigger at this file (Configuration → "Cloud Build configuration file",
+# location: /cloudbuild.yaml) instead of the inline config.
+#
+# IMPORTANT: the VITE_* values are BUILD-TIME (Vite inlines them into the client bundle),
+# so they're passed as --build-arg here. Set the real _VITE_* values as substitution
+# variables in the trigger UI — they're kept out of the repo on purpose. They are public
+# web-config values (they ship in the client bundle), not secrets.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: Build
+    args:
+      - build
+      - '--no-cache'
+      - '-t'
+      - '$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+      - '--build-arg=VITE_FIREBASE_API_KEY=$_VITE_FIREBASE_API_KEY'
+      - '--build-arg=VITE_FIREBASE_AUTH_DOMAIN=$_VITE_FIREBASE_AUTH_DOMAIN'
+      - '--build-arg=VITE_FIREBASE_PROJECT_ID=$_VITE_FIREBASE_PROJECT_ID'
+      - '--build-arg=VITE_FIREBASE_STORAGE_BUCKET=$_VITE_FIREBASE_STORAGE_BUCKET'
+      - '--build-arg=VITE_FIREBASE_MESSAGING_SENDER_ID=$_VITE_FIREBASE_MESSAGING_SENDER_ID'
+      - '--build-arg=VITE_FIREBASE_APP_ID=$_VITE_FIREBASE_APP_ID'
+      - '--build-arg=VITE_FIREBASE_MEASUREMENT_ID=$_VITE_FIREBASE_MEASUREMENT_ID'
+      - '--build-arg=VITE_GOOGLE_CLIENT_ID=$_VITE_GOOGLE_CLIENT_ID'
+      - .
+      - '-f'
+      - Dockerfile
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push
+    args:
+      - push
+      - '$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: Deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - $_SERVICE_NAME
+      - '--platform=managed'
+      - '--image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+      - '--region=$_DEPLOY_REGION'
+      - '--labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID'
+      # App requirements (idempotent on each deploy):
+      - '--memory=2Gi'          # headless Chromium for server-side mermaid rendering
+      - '--max-instances=1'     # MCP session state + temp image host live in memory
+      # Optional: '--min-instances=1' keeps synced MCP sessions warm (scale-to-zero loses
+      # in-memory state). Costs an always-on instance — enable only if you need it.
+      - '--quiet'
+
+images:
+  - '$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+
+options:
+  substitutionOption: ALLOW_LOOSE
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _TRIGGER_ID: REDACTED
+  REPO_NAME: REDACTED
+  _DEPLOY_REGION: REDACTED
+  _AR_HOSTNAME: REDACTED
+  _AR_REPOSITORY: REDACTED
+  _AR_PROJECT_ID: REDACTED
+  _PLATFORM: managed
+  _SERVICE_NAME: md-to-docs
+  # Real values are provided by the trigger's substitution variables (kept out of the repo).
+  # These empty defaults just document the contract.
+  _VITE_FIREBASE_API_KEY: ''
+  _VITE_FIREBASE_AUTH_DOMAIN: ''
+  _VITE_FIREBASE_PROJECT_ID: ''
+  _VITE_FIREBASE_STORAGE_BUCKET: ''
+  _VITE_FIREBASE_MESSAGING_SENDER_ID: ''
+  _VITE_FIREBASE_APP_ID: ''
+  _VITE_FIREBASE_MEASUREMENT_ID: ''
+  _VITE_GOOGLE_CLIENT_ID: ''
+
+tags:
+  - gcp-cloud-build-deploy-cloud-run
+  - gcp-cloud-build-deploy-cloud-run-managed
+  - md-to-docs
