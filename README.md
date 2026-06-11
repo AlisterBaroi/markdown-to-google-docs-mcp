@@ -114,10 +114,14 @@ npm start       # runs the production server: node dist/server.cjs
 
 Production runs as a **Node/Express server** (it serves the built client *and* the API/MCP endpoints) — it is **not** a static-only SPA. A `Dockerfile` is included (Node + Chromium for server-side Mermaid rendering).
 
-**Deploying to Cloud Run:**
+**Deploying to Cloud Run:** a ready-to-use Cloud Build pipeline ([`cloudbuild.yaml`](cloudbuild.yaml))
+builds, pushes, and deploys on every push to `main`. See **[docs/Cloud-Run-Deployment.md](docs/Cloud-Run-Deployment.md)**
+for the full step-by-step guide (Artifact Registry, trigger setup, substitution variables, making the
+service public, and registering the URL). Key points:
 - The server listens on `$PORT` (Cloud Run injects `8080`).
-- Allocate **~1–2 GB memory** (headless Chromium for Mermaid is heavy).
-- Use **`--min-instances=1 --max-instances=1`** — MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
+- Allocate **~2 GB memory** (headless Chromium for Mermaid is heavy).
+- Use **`--max-instances=1`** — MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
+- The `VITE_*` Firebase values are **build-time** substitution variables (baked into the bundle by Cloud Build), not runtime env vars.
 - Add your Cloud Run URL to **both** allowlists (Firebase Authorized domains *and* the OAuth client's Authorized JavaScript origins).
 
 ## ✅ Tests & CI

@@ -38,18 +38,22 @@ steps:
     entrypoint: gcloud
     args:
       - run
-      - services
-      - update
+      - deploy            # `deploy` creates the service if missing, updates it if it exists
       - $_SERVICE_NAME
-      - '--platform=managed'
       - '--image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
       - '--region=$_DEPLOY_REGION'
-      - '--labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID'
+      - '--platform=managed'
+      - '--labels=managed-by=cloud-build,commit-sha=$COMMIT_SHA'
       # App requirements (idempotent on each deploy):
       - '--memory=2Gi'          # headless Chromium for server-side mermaid rendering
       - '--max-instances=1'     # MCP session state + temp image host live in memory
       # Optional: '--min-instances=1' keeps synced MCP sessions warm (scale-to-zero loses
       # in-memory state). Costs an always-on instance — enable only if you need it.
+      #
+      # NOTE: this does NOT make the service publicly reachable. After the first deploy, make it
+      # public once (see docs/Cloud-Run-Deployment.md) — either `--allow-unauthenticated` or an
+      # allUsers IAM binding. We intentionally don't set it here so the pipeline doesn't fail on
+      # orgs that restrict public access (Domain Restricted Sharing).
       - '--quiet'
 
 images:
@@ -60,18 +64,16 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  # All values are supplied by the Cloud Build TRIGGER's substitution variables — they are
-  # NOT hardcoded here (kept out of the repo). These empty defaults just document the keys
-  # the trigger must provide. Cloud Build can't read GitHub Actions secrets — this is the
-  # equivalent mechanism for a Cloud Build pipeline.
-  _TRIGGER_ID: ''
+  # Provide these as substitution variables in your Cloud Build TRIGGER (or via
+  # `gcloud builds submit --substitutions=...`). They are NOT hardcoded here on purpose;
+  # the empty defaults just document which keys you must set. See docs/Cloud-Run-Deployment.md.
+  # ($REPO_NAME and $COMMIT_SHA are provided automatically for repo-connected triggers.)
   REPO_NAME: ''
-  _DEPLOY_REGION: ''
-  _AR_HOSTNAME: ''
-  _AR_REPOSITORY: ''
-  _AR_PROJECT_ID: ''
-  _PLATFORM: ''
-  _SERVICE_NAME: ''
+  _DEPLOY_REGION: ''        # e.g. us-central1
+  _AR_HOSTNAME: ''          # e.g. us-central1-docker.pkg.dev  (must match the region)
+  _AR_REPOSITORY: ''        # your Artifact Registry repo name
+  _AR_PROJECT_ID: ''        # your GCP project ID
+  _SERVICE_NAME: ''         # your Cloud Run service name
   _VITE_FIREBASE_API_KEY: ''
   _VITE_FIREBASE_AUTH_DOMAIN: ''
   _VITE_FIREBASE_PROJECT_ID: ''
