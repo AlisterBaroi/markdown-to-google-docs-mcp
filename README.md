@@ -137,4 +137,4 @@ If this saved you some copy-pasting, **star the repo** — it genuinely helps ot
 
 ## 📄 License
 
-[MIT](LICENSE) © Alister Baroi
+[MIT](LICENSE) © [Alister Baroi](https://github.com/AlisterBaroi)
