@@ -28,11 +28,18 @@ async function renderToPngBlob(
   const renderId = "mmd-" + Math.random().toString(36).slice(2);
   const { svg } = await mermaid.render(renderId, code);
 
-  // Determine the diagram's intrinsic dimensions from the SVG.
-  const svgDoc = new DOMParser().parseFromString(svg, "image/svg+xml");
-  const svgEl = svgDoc.documentElement;
-  let width = parseFloat(svgEl.getAttribute("width") || "");
-  let height = parseFloat(svgEl.getAttribute("height") || "");
+  // Mermaid serializes HTML labels (<foreignObject>) as HTML — e.g. an unclosed <br> — so
+  // the returned string is often not well-formed XML, and <img> loads SVG in strict XML
+  // mode. Parse it leniently in an inert HTML document, then re-serialize as XML.
+  const htmlDoc = new DOMParser().parseFromString(svg, "text/html");
+  const svgEl = htmlDoc.querySelector("svg");
+  if (!svgEl) throw new Error("Mermaid did not produce an SVG element");
+
+  // Determine the diagram's intrinsic dimensions (width/height may be "100%" — skip those).
+  const attrSize = (v: string | null) =>
+    v && !v.includes("%") ? parseFloat(v) : NaN;
+  let width = attrSize(svgEl.getAttribute("width"));
+  let height = attrSize(svgEl.getAttribute("height"));
   const viewBox = svgEl.getAttribute("viewBox");
   if ((!width || !height) && viewBox) {
     const parts = viewBox.split(/\s+/).map(Number);
@@ -42,10 +49,15 @@ async function renderToPngBlob(
   width = width || 600;
   height = height || 400;
 
+  // Explicit pixel dimensions so the <img> rasterizes at the intended size.
+  svgEl.setAttribute("width", String(width));
+  svgEl.setAttribute("height", String(height));
+  const xml = new XMLSerializer().serializeToString(svgEl);
+
   // Rasterize at 2x for crispness, but report intrinsic size for document layout.
   const scale = 2;
   const svgUrl = URL.createObjectURL(
-    new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
+    new Blob([xml], { type: "image/svg+xml;charset=utf-8" }),
   );
   try {
     const img = new Image();
@@ -75,6 +87,32 @@ async function renderToPngBlob(
 }
 
 /**
+ * Ask the server to render the diagram with headless Chrome. Preferred path: it screenshots
+ * the live SVG, so diagrams with HTML labels (<br/>, <b>, ...) render correctly — those emit
+ * <foreignObject>, which the browser path can't rasterize (drawing such an SVG taints the
+ * canvas and toBlob() throws). Returns false when the server can't render (e.g. local dev
+ * without Chromium), in which case the caller falls back to in-browser rendering.
+ */
+async function renderViaServer(el: DocElement): Promise<boolean> {
+  try {
+    const res = await fetch("/api/mermaid/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: el.text }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data?.url) return false;
+    el.imageUrl = data.url;
+    el.imageWidth = data.width;
+    el.imageHeight = data.height;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * For every `mermaid` element, render it and upload the PNG to the app's image host,
  * populating imageUrl/imageWidth/imageHeight in place. On failure the element is left
  * without an imageUrl, and the exporter falls back to showing the diagram source text.
@@ -83,6 +121,7 @@ export async function resolveMermaidElements(elements: DocElement[]): Promise<vo
   for (const el of elements) {
     if (el.type !== "mermaid" || !el.text.trim()) continue;
     try {
+      if (await renderViaServer(el)) continue;
       const { blob, width, height } = await renderToPngBlob(el.text);
       const res = await fetch("/api/mermaid", {
         method: "POST",

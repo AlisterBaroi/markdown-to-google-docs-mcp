@@ -10,15 +10,12 @@ Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](.github/CONTRIBUTING.md)
 
-> _Built with React 19 + Vite, an Express backend, the Google Docs & Drive APIs, and the Model Context Protocol._
-
 <!-- SEO / discoverability: set these as repo "Topics" in Settings →
      markdown, google-docs, google-drive, markdown-to-google-docs, mcp,
      model-context-protocol, claude, claude-code, mermaid, react, typescript, firebase -->
 
-![Markdown to Google Docs converter — demo UI](.github/demo.png)
-
----
+![Markdown to Google Docs converter — demo UI](.github/demo.gif)
+> _Built with React 19 + Vite, an Express backend, the Google Docs & Drive APIs, and the Model Context Protocol._
 
 ## Why?
 

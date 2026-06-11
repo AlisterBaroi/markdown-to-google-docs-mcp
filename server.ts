@@ -183,11 +183,12 @@ async function renderMermaidPngServerSide(
   const page = await browser.newPage();
   try {
     await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 2 });
-    // Loads the mermaid library (not the diagram) from a CDN, pinned to an exact version;
-    // rendering happens locally in this isolated page. Hardening TODO: self-host the dist or
-    // add an integrity="sha384-..." SRI hash (requires pinning, which we now do).
+    // Loads the mermaid library (not the diagram) from a CDN, pinned to the same version the
+    // client bundles (see package-lock.json) and verified with an SRI hash; rendering happens
+    // locally in this isolated page. When bumping the version, recompute the hash:
+    //   curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A
     const html = `<!doctype html><html><head><meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js" integrity="sha384-yQ4mmBBT+vhTAwjFH0toJXNYJ6O4usWnt6EPIdWwrRvx2V/n5lXuDZQwQFeSFydF" crossorigin="anonymous"></script>
 </head><body style="margin:0;background:#fff;">
 <div class="mermaid">${escapeHtml(code)}</div>
 <script>mermaid.initialize({ startOnLoad: true, securityLevel: "strict" });</script>
@@ -300,6 +301,24 @@ async function startServer() {
     }
     const url = storeMermaidImage(body, req);
     res.json({ url });
+  });
+
+  // Web client sends mermaid source here for server-side rendering (headless Chrome
+  // screenshots the live SVG, so HTML labels work — browsers can't rasterize those:
+  // SVGs containing <foreignObject> taint the canvas and toBlob() throws). Responds 503
+  // when Puppeteer/Chromium is unavailable (e.g. local dev) and the client falls back
+  // to rendering in the browser.
+  app.post("/api/mermaid/render", async (req, res) => {
+    const code = typeof req.body?.code === "string" ? req.body.code : "";
+    if (!code.trim()) {
+      return res.status(400).json({ error: "Missing mermaid code" });
+    }
+    const rendered = await renderMermaidPngServerSide(code);
+    if (!rendered) {
+      return res.status(503).json({ error: "Server-side mermaid rendering unavailable" });
+    }
+    const url = storeMermaidImage(rendered.png, req);
+    res.json({ url, width: rendered.width, height: rendered.height });
   });
 
   // Public, unauthenticated fetch endpoint — Google Docs' servers pull the image from here.
