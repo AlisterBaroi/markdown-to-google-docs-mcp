@@ -53,55 +53,10 @@ docker push "$IMAGE"
 
 ## 3. Deployment + Service
 
-`k8s/deployment.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: markdown-to-google-docs-mcp
-  labels: { app: markdown-to-google-docs-mcp }
-spec:
-  replicas: 1                       # keep at 1 — in-memory MCP state needs a single pod
-  selector:
-    matchLabels: { app: markdown-to-google-docs-mcp }
-  template:
-    metadata:
-      labels: { app: markdown-to-google-docs-mcp }
-    spec:
-      containers:
-        - name: app
-          image: REGION-docker.pkg.dev/PROJECT/REPO/markdown-to-google-docs-mcp:v1
-          ports:
-            - containerPort: 8080
-          env:
-            - name: PORT
-              value: "8080"
-            - name: NODE_ENV
-              value: "production"
-          resources:
-            requests: { cpu: "500m", memory: "1Gi" }
-            limits:   { cpu: "1",    memory: "2Gi" }   # headroom for headless Chromium
-          readinessProbe:
-            httpGet: { path: /api/health, port: 8080 }
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            httpGet: { path: /api/health, port: 8080 }
-            initialDelaySeconds: 15
-            periodSeconds: 20
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: markdown-to-google-docs-mcp
-spec:
-  type: ClusterIP
-  selector: { app: markdown-to-google-docs-mcp }
-  ports:
-    - port: 80
-      targetPort: 8080
-```
+The manifest ships with the repo at **[`k8s/deployment.yaml`](../k8s/deployment.yaml)** — a
+single-replica **Deployment** (port 8080, `/api/health` liveness+readiness probes, up to 2Gi for
+Chromium) plus a `ClusterIP` **Service**. **Edit the `image:` field** to the path you pushed in
+step 2, then apply:
 
 ```bash
 kubectl apply -f k8s/deployment.yaml
@@ -113,35 +68,9 @@ kubectl rollout status deployment/markdown-to-google-docs-mcp
 A public HTTPS URL is **required** — Google's servers fetch rendered Mermaid images over the public
 internet, and Google sign-in needs a real origin.
 
-`k8s/ingress.yaml` (GKE Ingress + Google-managed certificate):
-
-```yaml
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: mtgd-cert
-spec:
-  domains: [ "docs.example.com" ]   # your domain
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: markdown-to-google-docs-mcp
-  annotations:
-    networking.gke.io/managed-certificates: "mtgd-cert"
-    kubernetes.io/ingress.class: "gce"
-spec:
-  rules:
-    - host: docs.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: markdown-to-google-docs-mcp
-                port: { number: 80 }
-```
+The repo ships **[`k8s/ingress.yaml`](../k8s/ingress.yaml)** — a GKE `Ingress` plus a Google-managed
+TLS certificate (`ManagedCertificate`). **Edit `docs.example.com` to your domain** (it appears in two
+places), then apply:
 
 ```bash
 kubectl apply -f k8s/ingress.yaml

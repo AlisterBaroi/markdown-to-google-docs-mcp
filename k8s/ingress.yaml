@@ -1,0 +1,29 @@
+# GKE Ingress + Google-managed TLS certificate. See docs/GKE_Deployment.md
+# EDIT `docs.example.com` to your domain (both places) before applying:
+#   kubectl apply -f k8s/ingress.yaml
+#   kubectl get ingress markdown-to-google-docs-mcp   # point your DNS at the external IP
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: mtgd-cert
+spec:
+  domains: ["docs.example.com"] # <-- EDIT
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: markdown-to-google-docs-mcp
+  annotations:
+    networking.gke.io/managed-certificates: "mtgd-cert"
+    kubernetes.io/ingress.class: "gce"
+spec:
+  rules:
+    - host: docs.example.com # <-- EDIT
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: markdown-to-google-docs-mcp
+                port: { number: 80 }

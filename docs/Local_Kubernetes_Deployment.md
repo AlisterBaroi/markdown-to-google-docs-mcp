@@ -46,50 +46,9 @@ kind load docker-image markdown-to-google-docs-mcp:dev --name mtgd
 
 ## 4. Deploy
 
-`k8s/local.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: markdown-to-google-docs-mcp
-spec:
-  replicas: 1                       # keep at 1 — in-memory MCP state needs a single pod
-  selector:
-    matchLabels: { app: markdown-to-google-docs-mcp }
-  template:
-    metadata:
-      labels: { app: markdown-to-google-docs-mcp }
-    spec:
-      containers:
-        - name: app
-          image: markdown-to-google-docs-mcp:dev
-          imagePullPolicy: IfNotPresent   # use the image loaded into kind, don't pull
-          ports:
-            - containerPort: 8080
-          env:
-            - name: PORT
-              value: "8080"
-            - name: NODE_ENV
-              value: "production"
-          resources:
-            requests: { cpu: "250m", memory: "512Mi" }
-            limits:   { cpu: "1",    memory: "2Gi" }   # headroom for headless Chromium
-          readinessProbe:
-            httpGet: { path: /api/health, port: 8080 }
-            initialDelaySeconds: 5
-            periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: markdown-to-google-docs-mcp
-spec:
-  selector: { app: markdown-to-google-docs-mcp }
-  ports:
-    - port: 8080
-      targetPort: 8080
-```
+The manifest ships with the repo at **[`k8s/local.yaml`](../k8s/local.yaml)** — a single-replica
+**Deployment** (port 8080, `/api/health` probes, up to 2Gi for Chromium) plus a **Service**. It
+references the `markdown-to-google-docs-mcp:dev` image you just loaded, so apply it as-is:
 
 ```bash
 kubectl apply -f k8s/local.yaml
