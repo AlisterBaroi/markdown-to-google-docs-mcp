@@ -115,7 +115,7 @@ npm start       # runs the production server: node dist/server.cjs
 Production runs as a **Node/Express server** (it serves the built client *and* the API/MCP endpoints) — it is **not** a static-only SPA. A `Dockerfile` is included (Node + Chromium for server-side Mermaid rendering).
 
 **Deploying to Cloud Run:** a ready-to-use Cloud Build pipeline ([`cloudbuild.yaml`](cloudbuild.yaml))
-builds, pushes, and deploys on every push to `main`. See **[docs/Cloud-Run-Deployment.md](docs/Cloud-Run-Deployment.md)**
+builds, pushes, and deploys on every push to `main`. See **[docs/CloudRun_Deployment.md](docs/CloudRun_Deployment.md)**
 for the full step-by-step guide (Artifact Registry, trigger setup, substitution variables, making the
 service public, and registering the URL). Key points:
 - The server listens on `$PORT` (Cloud Run injects `8080`).

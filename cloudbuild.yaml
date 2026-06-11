@@ -51,7 +51,7 @@ steps:
       # in-memory state). Costs an always-on instance — enable only if you need it.
       #
       # NOTE: this does NOT make the service publicly reachable. After the first deploy, make it
-      # public once (see docs/Cloud-Run-Deployment.md) — either `--allow-unauthenticated` or an
+      # public once (see docs/CloudRun_Deployment.md) — either `--allow-unauthenticated` or an
       # allUsers IAM binding. We intentionally don't set it here so the pipeline doesn't fail on
       # orgs that restrict public access (Domain Restricted Sharing).
       - '--quiet'
@@ -66,7 +66,7 @@ options:
 substitutions:
   # Provide these as substitution variables in your Cloud Build TRIGGER (or via
   # `gcloud builds submit --substitutions=...`). They are NOT hardcoded here on purpose;
-  # the empty defaults just document which keys you must set. See docs/Cloud-Run-Deployment.md.
+  # the empty defaults just document which keys you must set. See docs/CloudRun_Deployment.md.
   # ($REPO_NAME and $COMMIT_SHA are provided automatically for repo-connected triggers.)
   REPO_NAME: ''
   _DEPLOY_REGION: ''        # e.g. us-central1
