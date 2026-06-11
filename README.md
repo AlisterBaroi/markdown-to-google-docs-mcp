@@ -5,8 +5,8 @@
 Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive — headings, lists, tables, bold/italic, code blocks, and even **rendered Mermaid diagrams**. It also runs as a **Model Context Protocol (MCP) server**, so **Claude Code** (or any MCP client) can write formatted Google Docs straight to your Drive from a conversation.
 
 <!-- Badges render once the repo is public -->
-[![CI](https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP/actions/workflows/ci.yml)
-[![Secret Scan](https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP/actions/workflows/secret-scan.yml)
+[![CI](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml)
+[![Secret Scan](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/secret-scan.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](.github/CONTRIBUTING.md)
 
@@ -60,8 +60,8 @@ flowchart LR
 
 ### 1. Clone & install
 ```bash
-git clone https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP.git
-cd Markdown-to-GoogleDocs-App-MCP
+git clone https://github.com/AlisterBaroi/markdown-to-google-docs-mcp.git
+cd markdown-to-google-docs-mcp
 npm install
 ```
 

@@ -64,8 +64,8 @@ This project uses a two-tier branch model, enforced by GitHub branch rulesets:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP.git
-   cd Markdown-to-GoogleDocs-App-MCP
+   git clone https://github.com/AlisterBaroi/markdown-to-google-docs-mcp.git
+   cd markdown-to-google-docs-mcp
    ```
    (When contributing, clone your **fork**'s URL instead.)
 
