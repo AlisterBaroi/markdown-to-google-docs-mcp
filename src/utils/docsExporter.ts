@@ -232,17 +232,24 @@ export async function styleDocContent(
   );
   console.log("[DEBUG] Filtered Structural Blocks (Paragraphs & Tables):", JSON.stringify(structuralBlocks, null, 2));
 
-  // Since we inserted the first item at index 1, the structural blocks align with groupedElements 1:1!
+  // The blocks do NOT align 1:1 with groupedElements: the Docs API inserts an implicit
+  // newline paragraph before every table (InsertTableRequest: "A newline character will be
+  // inserted before it"), and the body keeps its trailing empty paragraph. Walk the blocks
+  // with a pointer that advances past blocks of the wrong kind, so each group is matched to
+  // the next block of its own kind.
   const usableBlocks = structuralBlocks;
 
   let blockPointer = 0;
-  const getNextBlock = () => {
+  const getNextBlock = (kind: "paragraph" | "table") => {
+    while (blockPointer < usableBlocks.length && !usableBlocks[blockPointer][kind]) {
+      blockPointer++;
+    }
     if (blockPointer >= usableBlocks.length) {
-      console.warn("[DEBUG] getNextBlock called but we run out of usableBlocks! Pointer:", blockPointer);
+      console.warn(`[DEBUG] getNextBlock ran out of usableBlocks looking for a ${kind}! Pointer:`, blockPointer);
       return null;
     }
     const block = usableBlocks[blockPointer++];
-    console.log(`[DEBUG] getNextBlock (Pointer: ${blockPointer - 1}) returned block:`, JSON.stringify(block, null, 2));
+    console.log(`[DEBUG] getNextBlock (Pointer: ${blockPointer - 1}, kind: ${kind}) returned block:`, JSON.stringify(block, null, 2));
     return block;
   };
 
@@ -523,7 +530,7 @@ export async function styleDocContent(
 
       for (let j = 0; j < listItems.length; j++) {
         const item = listItems[j];
-        const block = getNextBlock();
+        const block = getNextBlock("paragraph");
         if (block && block.paragraph) {
           if (j === 0) firstBlock = block;
           if (j === listItems.length - 1) lastBlock = block;
@@ -549,7 +556,7 @@ export async function styleDocContent(
       }
     } else if (group.type === "table") {
       console.log("[DEBUG] Group element is a table. Retrieving table block...");
-      const block = getNextBlock();
+      const block = getNextBlock("table");
       if (block) {
         console.log("[DEBUG] Recovered block for table:", JSON.stringify(block, null, 2));
       } else {
@@ -642,7 +649,7 @@ export async function styleDocContent(
       }
     } else {
       console.log(`[DEBUG] Group element is not list or table (type=${group.type}). Getting next block...`);
-      const block = getNextBlock();
+      const block = getNextBlock("paragraph");
       if (block) {
         console.log(`[DEBUG] Block for non-table/list (type=${group.type}): startIndex=${block.startIndex}, endIndex=${block.endIndex}`);
       } else {
@@ -733,12 +740,23 @@ export async function styleDocContent(
   const MAX_WIDTH_PT = 450;
   const pxToPt = (px: number) => px * 0.75; // 96dpi -> pt
 
+  // Walk groups/blocks with the same kind-aware pointer as the styling pass: list groups
+  // consume one paragraph per item, tables skip their implicit leading newline paragraph.
+  let imgPointer = 0;
+  const nextImageBlock = (kind: "paragraph" | "table") => {
+    while (imgPointer < blocks2.length && !blocks2[imgPointer][kind]) imgPointer++;
+    return imgPointer < blocks2.length ? blocks2[imgPointer++] : null;
+  };
+
   const imageRequests: { index: number; requests: any[] }[] = [];
   const insertedUrls: string[] = [];
-  for (let i = 0; i < groupedElements.length && i < blocks2.length; i++) {
-    const group = groupedElements[i];
-    const block = blocks2[i];
-    if (group.type !== "mermaid" || !group.imageUrl || !block.paragraph) continue;
+  for (const group of groupedElements) {
+    if (group.type === "list_group") {
+      for (let j = 0; j < (group.items as DocElement[]).length; j++) nextImageBlock("paragraph");
+      continue;
+    }
+    const block = nextImageBlock(group.type === "table" ? "table" : "paragraph");
+    if (group.type !== "mermaid" || !group.imageUrl || !block?.paragraph) continue;
     insertedUrls.push(group.imageUrl);
 
     let widthPt = pxToPt(group.imageWidth || 600);
