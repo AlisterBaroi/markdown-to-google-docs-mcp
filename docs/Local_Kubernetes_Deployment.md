@@ -1,0 +1,144 @@
+# Deploying to a local Kubernetes cluster (kind)
+
+This guide runs **Markdown → Google Docs** on a local Kubernetes cluster using
+[**kind**](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker). It's handy for testing the Kubernetes
+manifests before shipping to [GKE](./GKE_Deployment.md). The same approach works with
+[minikube](https://minikube.sigs.k8s.io/) or [k3d](https://k3d.io/) with minor command changes.
+
+> ⚠️ **Big caveat up front:** on a local cluster the app is only reachable at `localhost`, and
+> **Google's servers cannot fetch `localhost`**. So **Mermaid diagrams won't embed** into Google
+> Docs locally (everything else — sign-in, text/table/list conversion — works). Diagram embedding
+> needs a public URL (GKE/Cloud Run, or a tunnel like ngrok). The app handles this gracefully: the
+> doc is still created, the diagram is just left out.
+
+---
+
+## 1. Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/), [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and `kubectl`.
+- A Firebase project + OAuth Web client (see the [Cloud Run guide](./CloudRun_Deployment.md) §1).
+
+## 2. Create a cluster
+
+```bash
+kind create cluster --name mtgd
+kubectl cluster-info --context kind-mtgd
+```
+
+## 3. Build the image and load it into kind
+
+`kind` doesn't use your local Docker registry directly — you build, then **load** the image into the
+cluster. The `VITE_*` values are baked in at build time (see the [Dockerfile](../Dockerfile)):
+
+```bash
+docker build -t markdown-to-google-docs-mcp:dev \
+  --build-arg VITE_FIREBASE_API_KEY=... \
+  --build-arg VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com \
+  --build-arg VITE_FIREBASE_PROJECT_ID=your-project \
+  --build-arg VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com \
+  --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID=... \
+  --build-arg VITE_FIREBASE_APP_ID=... \
+  --build-arg VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com \
+  .
+
+kind load docker-image markdown-to-google-docs-mcp:dev --name mtgd
+```
+
+## 4. Deploy
+
+`k8s/local.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: markdown-to-google-docs-mcp
+spec:
+  replicas: 1                       # keep at 1 — in-memory MCP state needs a single pod
+  selector:
+    matchLabels: { app: markdown-to-google-docs-mcp }
+  template:
+    metadata:
+      labels: { app: markdown-to-google-docs-mcp }
+    spec:
+      containers:
+        - name: app
+          image: markdown-to-google-docs-mcp:dev
+          imagePullPolicy: IfNotPresent   # use the image loaded into kind, don't pull
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NODE_ENV
+              value: "production"
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "2Gi" }   # headroom for headless Chromium
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: markdown-to-google-docs-mcp
+spec:
+  selector: { app: markdown-to-google-docs-mcp }
+  ports:
+    - port: 8080
+      targetPort: 8080
+```
+
+```bash
+kubectl apply -f k8s/local.yaml
+kubectl rollout status deployment/markdown-to-google-docs-mcp
+```
+
+## 5. Access it
+
+Port-forward the Service to your machine:
+
+```bash
+kubectl port-forward svc/markdown-to-google-docs-mcp 8080:8080
+```
+
+Open **http://localhost:8080**.
+
+For sign-in to work, add the origin to the OAuth Web client's **Authorized JavaScript origins**
+(Google Cloud Console → Credentials):
+
+```
+http://localhost:8080
+```
+
+(`localhost` is already in Firebase's Authorized domains by default.)
+
+## 6. Iterate
+
+After changing code, rebuild → reload → restart the rollout:
+
+```bash
+docker build -t markdown-to-google-docs-mcp:dev --build-arg ... .
+kind load docker-image markdown-to-google-docs-mcp:dev --name mtgd
+kubectl rollout restart deployment/markdown-to-google-docs-mcp
+```
+
+> For everyday development you usually don't need Kubernetes at all — `npm run dev` (see the README)
+> is faster. Use this when you specifically want to test the container/manifests locally.
+
+## 7. Tear down
+
+```bash
+kind delete cluster --name mtgd
+```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ErrImageNeverPull` / `ImagePullBackOff` | image not loaded into kind | re-run `kind load docker-image …` and ensure `imagePullPolicy: IfNotPresent` |
+| Mermaid diagrams blank | Google can't fetch `localhost` | expected locally — deploy to GKE/Cloud Run or use a public tunnel |
+| Sign-in `Error 400: origin_mismatch` | origin not authorized | add `http://localhost:8080` to the OAuth JS origins |
+| Pod OOMKilled mid-conversion | Chromium memory | raise the memory limit |

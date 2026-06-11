@@ -131,6 +131,10 @@ service public, and registering the URL). Key points:
 - The `VITE_*` Firebase values are **build-time** substitution variables (baked into the bundle by Cloud Build), not runtime env vars.
 - Add your Cloud Run URL to **both** allowlists (Firebase Authorized domains *and* the OAuth client's Authorized JavaScript origins).
 
+**Other deployment targets:**
+- **Kubernetes / GKE** → [docs/GKE_Deployment.md](docs/GKE_Deployment.md) — Deployment + Service + Ingress manifests, with managed TLS.
+- **Local Kubernetes (kind)** → [docs/Local_Kubernetes_Deployment.md](docs/Local_Kubernetes_Deployment.md) — for testing the manifests locally (note: Mermaid embedding needs a public URL, so it won't render on `localhost`).
+
 ## ✅ Tests & CI
 
 ```bash
