@@ -105,6 +105,19 @@ Google sign-in checks two **separate** allowlists. Add your Cloud Run URL to **b
 
 Missing the second one causes `Error 400: origin_mismatch` on sign-in / token refresh.
 
+### Restricting who can sign in (by email domain)
+
+The app itself does **not** enforce an email-domain allowlist (the `EMAIL_DOMAIN` entry in
+`.env.example` is a placeholder and is not read by the code). Restrict sign-in at the **Google /
+Firebase console** instead:
+
+- To allow **only your organization** (e.g. `@your-company.com`): set the **OAuth consent screen**
+  user type to **Internal** in Google Cloud Console → APIs & Services → OAuth consent screen. Only
+  users in your Google Workspace org will be able to sign in; outside accounts (e.g. personal Gmail)
+  are rejected automatically.
+- For finer-grained control, use a [Firebase Authentication blocking function](https://firebase.google.com/docs/auth/extend-with-blocking-functions)
+  (`beforeUserCreated` / `beforeUserSignedIn`) to reject emails that don't match your allowed domain(s).
+
 ## 7. Deploy without a trigger (manual / one-off)
 
 You can run the same pipeline from your machine, passing substitutions inline:
