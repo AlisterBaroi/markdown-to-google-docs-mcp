@@ -22,7 +22,7 @@ This section guides you through submitting an enhancement suggestion, including 
 
 ### Pull Requests
 We actively welcome your pull requests. **All changes flow through the `dev` branch — `main` never takes direct commits or PRs from feature branches** (see [Branching model](#branching-model--branch-protection) below).
-1. Fork the repo and create your branch from **`dev`** (not `main`).
+1. Fork the repo and clone it (the default branch is `main`); create your feature branch from **`main`**.
 2. Follow the development setup instructions below / in the `README.md`.
 3. If you've added code that should be tested, add tests.
 4. If you've changed APIs or core features, update the documentation.
@@ -54,7 +54,7 @@ This project uses a two-tier branch model, enforced by GitHub branch rulesets:
                                   ▼   Cloud Run deploy
 ```
 
-1. Branch off `dev` in your fork, make your changes, and open a PR **into `dev`**.
+1. Branch off `main` in your fork, make your changes, and open a PR **into `dev`** (the PR's *target* is `dev`, even though you branched from `main`).
 2. The repo owner reviews and approves; on merge, your work lands in `dev`.
 3. The maintainer periodically opens a `dev → main` PR, which merges only when CI passes — and that merge deploys to production.
 
@@ -64,9 +64,10 @@ This project uses a two-tier branch model, enforced by GitHub branch rulesets:
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-fork-url>
-   cd markdown-to-docs
+   git clone https://github.com/AlisterBaroi/Markdown-to-GoogleDocs-App-MCP.git
+   cd Markdown-to-GoogleDocs-App-MCP
    ```
+   (When contributing, clone your **fork**'s URL instead.)
 
 2. **Install dependencies:**
    ```bash
