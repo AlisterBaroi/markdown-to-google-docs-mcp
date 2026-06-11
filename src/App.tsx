@@ -4,15 +4,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import { 
-  FileText, 
-  Settings as SettingsIcon, 
-  FolderOpen, 
-  LogOut, 
-  Play, 
-  Loader2, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  FileText,
+  Settings as SettingsIcon,
+  FolderOpen,
+  LogOut,
+  Play,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
   ExternalLink,
   ChevronRight,
   BookOpen,
@@ -33,6 +33,9 @@ import FileUploader from './components/FileUploader';
 import FolderSelector from './components/FolderSelector';
 import SettingsPanel from './components/SettingsPanel';
 import McpPanel from './components/McpPanel';
+
+// Injected at build time from package.json via Vite `define` (see vite.config.ts).
+declare const __APP_VERSION__: string;
 
 // Default user guidelines settings
 const DEFAULT_SETTINGS: ConversionSettings = {
@@ -144,10 +147,10 @@ export default function App() {
   // App UI state
   const [activeTab, setActiveTab] = useState<'upload' | 'settings'>('upload');
   const [settings, setSettings] = useState<ConversionSettings>(DEFAULT_SETTINGS);
-  
+
   // Files queue
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  
+
   // Save Location Drive folder details
   const [selectedFolder, setSelectedFolder] = useState<{ id: string; name: string; fullPath: string }>({
     id: 'root',
@@ -159,7 +162,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState(0);
-  
+
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Routing & MCP states
@@ -229,7 +232,7 @@ export default function App() {
     } catch (err) {
       console.error('Failed to preserve theme selection:', err);
     }
-    
+
     if (isDark) {
       document.documentElement.classList.add('dark');
     } else {
@@ -325,7 +328,7 @@ export default function App() {
       console.error(err);
       const errMsg = err?.message || '';
       const errCode = err?.code || '';
-      
+
       if (errCode === 'auth/user-cancelled' || errMsg.includes('user-cancelled') || errMsg.includes('IdP denied access')) {
         setAuthError(
           'Authorization Canceled or Denied: To use this app, please sign in with Google and make sure you check the boxes to grant Google Drive and Google Docs permissions. (We need these to save files directly to your Drive folders).'
@@ -413,7 +416,7 @@ export default function App() {
     // We process each file sequentially
     for (let i = 0; i < uploadedFiles.length; i++) {
       const file = uploadedFiles[i];
-      
+
       // Skip already success files unless re-tried
       if (file.status === 'success') {
         successfullyConverted++;
@@ -449,11 +452,11 @@ export default function App() {
         // 5. Commit success details
         setUploadedFiles(prev => {
           const copy = [...prev];
-          copy[i] = { 
-            ...copy[i], 
-            status: 'success', 
-            docId: documentId, 
-            docUrl: docUrl 
+          copy[i] = {
+            ...copy[i],
+            status: 'success',
+            docId: documentId,
+            docUrl: docUrl
           };
           return copy;
         });
@@ -462,10 +465,10 @@ export default function App() {
         console.error(`Error converting ${file.name}:`, err);
         setUploadedFiles(prev => {
           const copy = [...prev];
-          copy[i] = { 
-            ...copy[i], 
-            status: 'failed', 
-            error: err.message || 'Conversion failed.' 
+          copy[i] = {
+            ...copy[i],
+            status: 'failed',
+            error: err.message || 'Conversion failed.'
           };
           return copy;
         });
@@ -496,7 +499,7 @@ export default function App() {
       {/* Dynamic Navigation Header */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 shadow-sm transition-colors duration-200" id="navigation-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[60px] flex items-center justify-between">
-          <button 
+          <button
             onClick={() => {
               window.history.pushState({}, "", "/");
               window.dispatchEvent(new Event("popstate"));
@@ -539,16 +542,16 @@ export default function App() {
             {user && (
               /* User Profile Dropdown */
               <div className="relative">
-                <button 
+                <button
                   onClick={() => setShowProfileDropdown(!showProfileDropdown)}
                   className="flex items-center justify-center focus:outline-none rounded-full ring-2 ring-transparent transition hover:ring-blue-100 dark:hover:ring-blue-900 active:ring-blue-200 cursor-pointer select-none"
                 >
                   {user.photoURL ? (
-                    <img 
-                      src={user.photoURL} 
-                      alt="avatar" 
+                    <img
+                      src={user.photoURL}
+                      alt="avatar"
                       referrerPolicy="no-referrer"
-                      className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm" 
+                      className="w-8 h-8 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm"
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center border border-blue-200 dark:border-blue-800 shadow-sm">
@@ -560,8 +563,8 @@ export default function App() {
                 {/* Dropdown Menu */}
                 {showProfileDropdown && (
                   <>
-                    <div 
-                      className="fixed inset-0 z-40" 
+                    <div
+                      className="fixed inset-0 z-40"
                       onClick={() => setShowProfileDropdown(false)}
                     ></div>
                     <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -642,8 +645,8 @@ export default function App() {
               )}
 
               {/* Google Sign-In Styled Button matching specs */}
-              <button 
-                onClick={handleLogin} 
+              <button
+                onClick={handleLogin}
                 className="w-full flex items-center justify-center gap-3 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-700 rounded-xl hover:bg-slate-50/80 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold text-xs py-3 px-4 shadow-sm transition-all duration-200 cursor-pointer"
                 id="google-login-btn"
               >
@@ -661,7 +664,7 @@ export default function App() {
             </div>
           </div>
         ) : isMcpRoute ? (
-          <McpPanel 
+          <McpPanel
             user={user}
             mcpToken={mcpToken}
             onRegenerateToken={() => {
@@ -684,16 +687,15 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="active-workspace">
             {/* Left Column: Files & Controls & Presets */}
             <div className="lg:col-span-7 flex flex-col gap-6" id="left-sidebar-controls">
-              
+
               {/* Tabs for Markdown and Style Presets */}
               <div className="flex border-b border-slate-200 dark:border-slate-800">
                 <button
                   onClick={() => setActiveTab('upload')}
-                  className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${
-                    activeTab === 'upload'
-                      ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
-                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
+                  className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${activeTab === 'upload'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
+                    : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
                   id="tab-selector-upload"
                 >
                   <FileText className="w-4 h-4" />
@@ -701,11 +703,10 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
-                  className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${
-                    activeTab === 'settings'
-                      ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
-                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                  }`}
+                  className={`py-2.5 px-4 text-xs font-bold border-b-2 transition select-none cursor-pointer flex items-center gap-1.5 ${activeTab === 'settings'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400 font-bold'
+                    : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
                   id="tab-selector-presets"
                 >
                   <SettingsIcon className="w-4 h-4" />
@@ -788,7 +789,7 @@ export default function App() {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Completed Google Docs hyperlinks */}
                 {uploadedFiles.some(f => f.status === 'success') && (
                   <div className="border-t border-slate-200 dark:border-slate-800 pt-4 flex flex-col gap-2.5">
@@ -796,15 +797,15 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[140px] overflow-y-auto pr-0.5">
                       {uploadedFiles.filter(f => f.status === 'success').map((f, idx) => (
                         <a
-                           key={`success-link-${idx}`}
-                           href={f.docUrl}
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/20 transition truncate select-none text-xs text-emerald-800 dark:text-emerald-300 font-bold"
-                           title="Open Google Doc in new tab"
+                          key={`success-link-${idx}`}
+                          href={f.docUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/20 transition truncate select-none text-xs text-emerald-800 dark:text-emerald-300 font-bold"
+                          title="Open Google Doc in new tab"
                         >
-                           <span className="truncate mr-2">{f.name.replace(/\.md$/i, '')}</span>
-                           <ExternalLink className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span className="truncate mr-2">{f.name.replace(/\.md$/i, '')}</span>
+                          <ExternalLink className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         </a>
                       ))}
                     </div>
@@ -830,12 +831,19 @@ export default function App() {
           </div>
         )}
       </main>
-      
+
       {/* Absolute Bottom Status Bar */}
       <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-5 transition-colors duration-200" id="application-footer">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
-          <p>© 2026 <a href="https://github.com/alisterbaroi" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">Alister Baroi</a>. All rights reserved.</p>
-          <p className="text-slate-400 dark:text-slate-500">Uses Google Documents & Google Drive APIs.</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-3 items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <p className="text-center sm:text-left">© 2026 <a href="https://github.com/alisterbaroi" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold underline transition-colors">Alister Baroi</a>. All rights reserved.</p>
+          <p className="text-center text-slate-400 dark:text-slate-500">Version {__APP_VERSION__}</p>
+          <p className="text-center sm:text-right text-slate-400 dark:text-slate-500">
+            Uses{' '}
+            <a href="https://developers.google.com/workspace/docs/api/reference/rest" target="_blank" rel="noopener noreferrer" className="text-blue-400 dark:text-blue-300 hover:text-blue-500 dark:hover:text-blue-200 transition-colors">Google Docs API</a>,{' '}
+            <a href="https://developers.google.com/workspace/drive/api/reference/rest" target="_blank" rel="noopener noreferrer" className="text-blue-400 dark:text-blue-300 hover:text-blue-500 dark:hover:text-blue-200 transition-colors">Drive API</a>,{' '}
+            <a href="https://firebase.google.com/docs/auth" target="_blank" rel="noopener noreferrer" className="text-blue-400 dark:text-blue-300 hover:text-blue-500 dark:hover:text-blue-200 transition-colors">Firebase OAuth</a> &amp;{' '}
+            <a href="https://firebase.google.com/docs/firestore" target="_blank" rel="noopener noreferrer" className="text-blue-400 dark:text-blue-300 hover:text-blue-500 dark:hover:text-blue-200 transition-colors">Firestore</a>.
+          </p>
         </div>
       </footer>
     </div>
