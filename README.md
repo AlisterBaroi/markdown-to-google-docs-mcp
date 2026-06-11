@@ -1,19 +1,24 @@
-# Markdown → Docs 📝➡️📄
+# Markdown → Google Docs 📝➡️📄
 
-**Turn Markdown into beautifully styled Google Docs — from a web app, _or_ straight from your AI agent.**
+**An open-source Markdown to Google Docs converter — use the web app, _or_ let your AI agent (Claude Code) generate Docs for you over MCP.**
 
-Drop in `.md` files and get clean, formatted Google Docs in your Drive — headings, lists, tables, bold/italic, code blocks, and even **rendered Mermaid diagrams**. Then plug it into **Claude Code** (or any MCP client) so your AI agent can write docs to your Drive for you.
+Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive — headings, lists, tables, bold/italic, code blocks, and even **rendered Mermaid diagrams**. It also runs as a **Model Context Protocol (MCP) server**, so **Claude Code** (or any MCP client) can write formatted Google Docs straight to your Drive from a conversation.
 
-<!-- Badges work once the repo is public -->
-[![CI](https://github.com/AlisterBaroi/ai-studio-rnd/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisterBaroi/ai-studio-rnd/actions/workflows/ci.yml)
-[![Secret Scan](https://github.com/AlisterBaroi/ai-studio-rnd/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/AlisterBaroi/ai-studio-rnd/actions/workflows/secret-scan.yml)
+<!-- Badges render once the repo is public -->
+[![CI](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml)
+[![Secret Scan](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/secret-scan.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](.github/CONTRIBUTING.md)
 
 > _Built with React 19 + Vite, an Express backend, the Google Docs & Drive APIs, and the Model Context Protocol._
 
-<!-- 👉 TIP: a screenshot or short demo GIF here is the single biggest thing for getting stars. Drop one in /assets and reference it: -->
-<!-- ![Markdown to Docs demo](assets/demo.gif) -->
+<!-- SEO / discoverability: set these as repo "Topics" in Settings →
+     markdown, google-docs, google-drive, markdown-to-google-docs, mcp,
+     model-context-protocol, claude, claude-code, mermaid, react, typescript, firebase -->
+
+<!-- 👉 TIP: a screenshot or short demo GIF here is the single biggest driver of stars.
+     Drop one in /assets and reference it (alt text helps search): -->
+<!-- ![Markdown to Google Docs converter demo](assets/demo.gif) -->
 
 ---
 
@@ -55,8 +60,8 @@ flowchart LR
 
 ### 1. Clone & install
 ```bash
-git clone https://github.com/AlisterBaroi/ai-studio-rnd.git
-cd ai-studio-rnd
+git clone https://github.com/AlisterBaroi/markdown-to-google-docs-mcp.git
+cd markdown-to-google-docs-mcp
 npm install
 ```
 
@@ -78,6 +83,8 @@ VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 > **Two allowlists you must set in Google Cloud / Firebase** (they're separate and both required):
 > - **Firebase → Authentication → Authorized domains**: add the host you run on (`localhost`, your deploy domain).
 > - **Google Cloud → Credentials → your OAuth Web client → Authorized JavaScript origins**: add the exact origin (e.g. `http://localhost:3000`). Missing this causes `Error 400: origin_mismatch` on sign-in/refresh.
+>
+> **Restricting who can sign in (by email domain):** this is configured in the **Google / Firebase console**, not in app code. To limit sign-in to your organization (e.g. only `@your-company.com`), set the **OAuth consent screen** user type to **Internal** (Google Workspace org-only) in Google Cloud Console. The `EMAIL_DOMAIN` value in `.env.example` is a placeholder and is **not** enforced by the app.
 
 ### 3. Run
 ```bash
@@ -114,10 +121,14 @@ npm start       # runs the production server: node dist/server.cjs
 
 Production runs as a **Node/Express server** (it serves the built client *and* the API/MCP endpoints) — it is **not** a static-only SPA. A `Dockerfile` is included (Node + Chromium for server-side Mermaid rendering).
 
-**Deploying to Cloud Run:**
+**Deploying to Cloud Run:** a ready-to-use Cloud Build pipeline ([`cloudbuild.yaml`](cloudbuild.yaml))
+builds, pushes, and deploys on every push to `main`. See **[docs/CloudRun_Deployment.md](docs/CloudRun_Deployment.md)**
+for the full step-by-step guide (Artifact Registry, trigger setup, substitution variables, making the
+service public, and registering the URL). Key points:
 - The server listens on `$PORT` (Cloud Run injects `8080`).
-- Allocate **~1–2 GB memory** (headless Chromium for Mermaid is heavy).
-- Use **`--min-instances=1 --max-instances=1`** — MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
+- Allocate **~2 GB memory** (headless Chromium for Mermaid is heavy).
+- Use **`--max-instances=1`** — MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
+- The `VITE_*` Firebase values are **build-time** substitution variables (baked into the bundle by Cloud Build), not runtime env vars.
 - Add your Cloud Run URL to **both** allowlists (Firebase Authorized domains *and* the OAuth client's Authorized JavaScript origins).
 
 ## ✅ Tests & CI
@@ -125,7 +136,7 @@ Production runs as a **Node/Express server** (it serves the built client *and* t
 ```bash
 npm test        # Vitest: parser unit tests + a server E2E (boots the built server)
 ```
-GitHub Actions runs build + tests on every push/PR, plus a **gitleaks** secret scan.
+GitHub Actions runs **build + tests** and a **gitleaks secret scan** on every push/PR to non-`main` branches, and nightly on `main`. (`main` is protected: changes land only via PR, and merges require CI to pass — see the [Contributing guide](.github/CONTRIBUTING.md).)
 
 ## 🤝 Contributing
 

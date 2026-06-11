@@ -21,22 +21,53 @@ This section guides you through submitting an enhancement suggestion, including 
 - Explain why this enhancement would be useful to most users.
 
 ### Pull Requests
-We actively welcome your pull requests.
-1. Fork the repo and create your branch from `main`.
-2. Follow the development setup instructions in the `README.md`.
+We actively welcome your pull requests. **All changes flow through the `dev` branch — `main` never takes direct commits or PRs from feature branches** (see [Branching model](#branching-model--branch-protection) below).
+1. Fork the repo and clone it (the default branch is `main`); create your feature branch from **`main`**.
+2. Follow the development setup instructions below / in the `README.md`.
 3. If you've added code that should be tested, add tests.
 4. If you've changed APIs or core features, update the documentation.
-5. Ensure the test suite passes (if applicable).
-6. Make sure your code lints.
-7. Issue that pull request!
+5. Ensure the test suite passes (`npm test`) and your code lints (`npm run lint`).
+6. Open your pull request **against the `dev` branch**.
+7. The repo owner reviews and approves — only the owner's approval can merge it.
+
+## Branching model & branch protection
+
+This project uses a two-tier branch model, enforced by GitHub branch rulesets:
+
+- **`main`** — the production / deploy branch (a push to `main` triggers the Cloud Run deploy).
+  - **No direct commits** — changes land only via pull request.
+  - Force-pushes and branch deletion are blocked.
+  - A PR can be merged **only after CI and the secret scan pass**.
+  - PRs into `main` come **only from `dev`**, and are opened by the maintainer.
+- **`dev`** — the integration branch where contributions are collected.
+  - Branch deletion is blocked (direct commits by the maintainer are allowed).
+  - PRs into `dev` **require review from the code owner** — only the repo owner's
+    approval satisfies it (see [CODEOWNERS](CODEOWNERS)).
+
+**Contribution flow:**
+
+```
+ your fork (feature branch)
+        │   PR   ▼   ← repo owner's review required
+       dev  ─────────────────►  main   ← maintainer-opened PR; merges only when CI is green
+                                  │
+                                  ▼   Cloud Run deploy
+```
+
+1. Branch off `main` in your fork, make your changes, and open a PR **into `dev`** (the PR's *target* is `dev`, even though you branched from `main`).
+2. The repo owner reviews and approves; on merge, your work lands in `dev`.
+3. The maintainer periodically opens a `dev → main` PR, which merges only when CI passes — and that merge deploys to production.
+
+> CI and secret scanning run automatically on every push/PR to non-`main` branches; `main` itself is scanned on a nightly schedule.
 
 ## Local Development Setup
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-fork-url>
-   cd markdown-to-docs
+   git clone https://github.com/AlisterBaroi/markdown-to-google-docs-mcp.git
+   cd markdown-to-google-docs-mcp
    ```
+   (When contributing, clone your **fork**'s URL instead.)
 
 2. **Install dependencies:**
    ```bash

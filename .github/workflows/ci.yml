@@ -1,9 +1,14 @@
 name: CI
 
 on:
+  # Non-main branches: run on push and PRs.
   push:
-    branches: [main]
+    branches-ignore: [main]
   pull_request:
+    branches-ignore: [main]
+  # main: run only nightly (the schedule trigger always runs on the default branch, main).
+  schedule:
+    - cron: "0 0 * * *" # 00:00 UTC (midnight GMT) every night
 
 jobs:
   build-and-test:
