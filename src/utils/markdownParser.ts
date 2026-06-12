@@ -457,8 +457,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Bullet List (- item, * item, + item)
-    const bulletMatch = trimmedLine.match(/^[-*+]\s+(.*)$/);
+    // Match Bullet List (- item, * item, + item). The \S anchor keeps \s+ and the
+    // capture unambiguous, so backtracking stays linear (CodeQL js/polynomial-redos).
+    const bulletMatch = trimmedLine.match(/^[-*+]\s+(\S.*)$/);
     if (bulletMatch) {
       const {
         cleaned: content,
