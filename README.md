@@ -57,8 +57,9 @@ flowchart LR
 
 ### Prerequisites
 - **Node 20+**
-- A **Firebase project** with Google sign-in enabled
-- A **Google Cloud** OAuth 2.0 Web client, with the **Google Docs API** and **Google Drive API** enabled
+- A **Google account** (a personal Gmail account works; no paid plan needed)
+
+You'll create everything else (the Firebase project, OAuth client, and API access) in step 2 below.
 
 ### 1. Clone & install
 ```bash
@@ -67,8 +68,29 @@ cd markdown-to-google-docs-mcp
 npm install
 ```
 
-### 2. Configure environment
-Copy `.env.example` to `.env` and fill in your Firebase web config and OAuth client ID:
+### 2. Create your Firebase & Google Cloud credentials
+
+You only do this once; it takes about 10 minutes and stays within Google's free tiers. All the values `.env` needs come from a single Firebase project (every Firebase project is also a Google Cloud project under the hood, which is where the APIs and OAuth client live).
+
+1. **Create a Firebase project.** Go to the [Firebase console](https://console.firebase.google.com/), click **Add project**, and name it anything (enabling Google Analytics is optional).
+
+2. **Register a Web app to get the `VITE_FIREBASE_*` values.** In the Firebase console: **Project settings** (gear icon) → **General** → **Your apps** → click the Web icon (`</>`) and register the app (no hosting needed). The `firebaseConfig` snippet it shows maps 1:1 onto the env variables: `apiKey` → `VITE_FIREBASE_API_KEY`, `authDomain` → `VITE_FIREBASE_AUTH_DOMAIN`, and so on. (`measurementId` only exists if you enabled Analytics; it's optional.)
+
+3. **Enable Google sign-in.** **Build → Authentication → Get started → Sign-in method** → enable **Google** and pick a support email. Two useful side effects: `localhost` is already on the **Authorized domains** list by default, and Firebase auto-creates an **OAuth 2.0 Web client** in the underlying Google Cloud project; you'll grab its ID in step 6.
+
+4. **Enable the Docs and Drive APIs.** Open the [Google Cloud console](https://console.cloud.google.com/) and select the project with the *same name* as your Firebase project. Under **APIs & Services → Library**, enable **Google Docs API** and **Google Drive API**. (CLI alternative: `gcloud services enable docs.googleapis.com drive.googleapis.com`.)
+
+5. **Configure the OAuth consent screen.** **APIs & Services → OAuth consent screen**: choose **External** (the only option for personal accounts), fill in the app name and emails, and skip the scopes page (the app requests Docs/Drive access at sign-in time). Then add your own Google account under **Test users**. While the app is in *Testing* mode, only test users can sign in, and they'll see an "unverified app" warning they can click through.
+
+6. **Get the OAuth client ID and allow `localhost`.** **APIs & Services → Credentials → OAuth 2.0 Client IDs** → open the client named *"Web client (auto created by Google Service)"*. Copy its **Client ID** (that's `VITE_GOOGLE_CLIENT_ID`), and add `http://localhost:3000` to **Authorized JavaScript origins**. Changes can take a few minutes to propagate.
+
+> **If sign-in fails:**
+> - `Error 400: origin_mismatch` → the exact origin is missing from the OAuth client's **Authorized JavaScript origins** (step 6).
+> - `auth/configuration-not-found` → the Google provider isn't enabled in Firebase Authentication (step 3).
+> - `Error 403: access_denied` → your account isn't on the consent screen's **Test users** list (step 5).
+
+### 3. Configure environment
+Copy `.env.example` to `.env` and fill in your Firebase web config and OAuth client ID from step 2:
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -82,13 +104,13 @@ VITE_FIREBASE_MEASUREMENT_ID=...
 VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 ```
 
-> **Two allowlists you must set in Google Cloud / Firebase** (they're separate and both required):
-> - **Firebase → Authentication → Authorized domains**: add the host you run on (`localhost`, your deploy domain).
-> - **Google Cloud → Credentials → your OAuth Web client → Authorized JavaScript origins**: add the exact origin (e.g. `http://localhost:3000`). Missing this causes `Error 400: origin_mismatch` on sign-in/refresh.
+> **Deploying somewhere other than `localhost`?** Two allowlists must both include the new host (step 2 already covers `localhost`):
+> - **Firebase → Authentication → Authorized domains**: add your deploy domain.
+> - **Google Cloud → Credentials → your OAuth Web client → Authorized JavaScript origins**: add the exact origin. Missing this causes `Error 400: origin_mismatch` on sign-in/refresh.
 >
 > **Restricting who can sign in (by email domain):** this is configured in the **Google / Firebase console**, not in app code. To limit sign-in to your organization (e.g. only `@your-company.com`), set the **OAuth consent screen** user type to **Internal** (Google Workspace org-only) in Google Cloud Console. The `EMAIL_DOMAIN` value in `.env.example` is a placeholder and is **not** enforced by the app.
 
-### 3. Run
+### 4. Run
 ```bash
 npm run dev
 ```
