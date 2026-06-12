@@ -481,8 +481,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Numbered List (1. item, 2. item)
-    const numberedMatch = trimmedLine.match(/^\d+\.\s+(.*)$/);
+    // Match Numbered List (1. item, 2. item). The \S anchor keeps \s+ and the
+    // capture unambiguous, so backtracking stays linear (CodeQL js/polynomial-redos).
+    const numberedMatch = trimmedLine.match(/^\d+\.\s+(\S.*)$/);
     if (numberedMatch) {
       const {
         cleaned: content,
