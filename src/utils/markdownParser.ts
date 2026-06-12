@@ -82,8 +82,10 @@ function stripMarkdownFormatting(text: string): {
     }
   };
 
-  // Links
-  doReplace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, start) => {
+  // Links. The negated classes exclude the delimiters themselves ([ in text;
+  // parens/whitespace in URLs), so a scan that won't match bails out quickly
+  // instead of backtracking polynomially (CodeQL js/polynomial-redos).
+  doReplace(/\[([^\][]+)\]\(([^()\s]+)\)/g, (match, start) => {
     return {
       replacement: match[1],
       prefixLen: 1,
@@ -93,8 +95,9 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // bold italic ***text***
-  doReplace(/(\*\*\*)(.*?)\1/g, (match, start) => {
+  // bold italic ***text***. Tempered content (single *s allowed, never a run
+  // that opens a delimiter) keeps backtracking linear (CodeQL js/polynomial-redos).
+  doReplace(/(\*\*\*)((?:[^*]|\*(?!\*\*))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -106,8 +109,8 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // bold **text**
-  doReplace(/(\*\*)(.*?)\1/g, (match, start) => {
+  // bold **text** (tempered content; see note on the *** pass above)
+  doReplace(/(\*\*)((?:[^*]|\*(?!\*))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -116,8 +119,8 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // underline __text__
-  doReplace(/(__)(.*?)\1/g, (match, start) => {
+  // underline __text__ (tempered content; see note on the *** pass above)
+  doReplace(/(__)((?:[^_]|_(?!_))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -126,18 +129,21 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // italic *text* or _text_
-  doReplace(/(\*|_)(.*?)\1/g, (match, start) => {
-    const textLen = match[2].length;
-    return {
-      replacement: match[2],
-      prefixLen: 1,
-      newRanges: [{ type: "italic", start, end: start + textLen }],
-    };
-  });
+  // italic *text* or _text_. One pass per delimiter so the content class can
+  // exclude it outright, keeping backtracking linear (CodeQL js/polynomial-redos).
+  for (const italicRegex of [/\*([^*]+)\*/g, /_([^_]+)_/g]) {
+    doReplace(italicRegex, (match, start) => {
+      const textLen = match[1].length;
+      return {
+        replacement: match[1],
+        prefixLen: 1,
+        newRanges: [{ type: "italic", start, end: start + textLen }],
+      };
+    });
+  }
 
-  // strikethrough ~~text~~
-  doReplace(/~~(.*?)~~/g, (match, start) => {
+  // strikethrough ~~text~~ (tempered content; see note on the *** pass above)
+  doReplace(/~~((?:[^~]|~(?!~))+)~~/g, (match, start) => {
     const textLen = match[1].length;
     return {
       replacement: match[1],
