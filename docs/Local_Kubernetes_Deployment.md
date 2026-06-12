@@ -5,11 +5,43 @@ This guide runs **Markdown → Google Docs** on a local Kubernetes cluster using
 manifests before shipping to [GKE](./GKE_Deployment.md). The same approach works with
 [minikube](https://minikube.sigs.k8s.io/) or [k3d](https://k3d.io/) with minor command changes.
 
-> ⚠️ **Big caveat up front:** on a local cluster the app is only reachable at `localhost`, and
+> **Big caveat up front:** on a local cluster the app is only reachable at `localhost`, and
 > **Google's servers cannot fetch `localhost`**. So **Mermaid diagrams won't embed** into Google
-> Docs locally (everything else — sign-in, text/table/list conversion — works). Diagram embedding
+> Docs locally (everything else works: sign-in, text/table/list conversion). Diagram embedding
 > needs a public URL (GKE/Cloud Run, or a tunnel like ngrok). The app handles this gracefully: the
 > doc is still created, the diagram is just left out.
+
+```mermaid
+flowchart LR
+    subgraph machine["Your machine"]
+        direction LR
+        dbuild["docker build<br/>(VITE_* build args)"]
+        kload["kind load<br/>docker-image"]
+        kapply["kubectl apply -f<br/>k8s/local.yaml"]
+        dbuild --> kload --> kapply
+    end
+
+    subgraph cluster["kind cluster"]
+        dep["Deployment<br/>(1 replica, 2Gi)<br/>+ Service"]
+    end
+
+    pf["kubectl port-forward<br/>8080:8080"]
+    app["http://localhost:8080<br/>sign-in and text, list,<br/>table conversion work"]
+    caveat["Mermaid images won't embed:<br/>Google's servers<br/>can't fetch localhost"]
+    fix{"need a public URL:<br/>GKE, Cloud Run,<br/>or a tunnel"}
+
+    kapply --> dep --> pf --> app
+    app -.-> caveat -.-> fix
+
+    classDef step fill:#1f6feb,color:#fff,stroke:#0d419d
+    classDef ok fill:#238636,color:#fff,stroke:#196c2e
+    classDef warn fill:#da3633,color:#fff,stroke:#8e1519
+    classDef gate fill:#9e6a03,color:#fff,stroke:#693e00
+    class dbuild,kload,kapply,dep,pf step
+    class app ok
+    class caveat warn
+    class fix gate
+```
 
 ---
 
@@ -27,7 +59,7 @@ kubectl cluster-info --context kind-mtgd
 
 ## 3. Build the image and load it into kind
 
-`kind` doesn't use your local Docker registry directly — you build, then **load** the image into the
+`kind` doesn't use your local Docker registry directly; you build, then **load** the image into the
 cluster. The `VITE_*` values are baked in at build time (see the [Dockerfile](../Dockerfile)):
 
 ```bash
@@ -46,7 +78,7 @@ kind load docker-image markdown-to-google-docs-mcp:dev --name mtgd
 
 ## 4. Deploy
 
-The manifest ships with the repo at **[`k8s/local.yaml`](../k8s/local.yaml)** — a single-replica
+The manifest ships with the repo at **[`k8s/local.yaml`](../k8s/local.yaml)**: a single-replica
 **Deployment** (port 8080, `/api/health` probes, up to 2Gi for Chromium) plus a **Service**. It
 references the `markdown-to-google-docs-mcp:dev` image you just loaded, so apply it as-is:
 
@@ -84,7 +116,7 @@ kind load docker-image markdown-to-google-docs-mcp:dev --name mtgd
 kubectl rollout restart deployment/markdown-to-google-docs-mcp
 ```
 
-> For everyday development you usually don't need Kubernetes at all — `npm run dev` (see the README)
+> For everyday development you usually don't need Kubernetes at all; `npm run dev` (see the README)
 > is faster. Use this when you specifically want to test the container/manifests locally.
 
 ## 7. Tear down
@@ -98,6 +130,6 @@ kind delete cluster --name mtgd
 | Symptom | Cause | Fix |
 |---|---|---|
 | `ErrImageNeverPull` / `ImagePullBackOff` | image not loaded into kind | re-run `kind load docker-image …` and ensure `imagePullPolicy: IfNotPresent` |
-| Mermaid diagrams blank | Google can't fetch `localhost` | expected locally — deploy to GKE/Cloud Run or use a public tunnel |
+| Mermaid diagrams blank | Google can't fetch `localhost` | expected locally; deploy to GKE/Cloud Run or use a public tunnel |
 | Sign-in `Error 400: origin_mismatch` | origin not authorized | add `http://localhost:8080` to the OAuth JS origins |
 | Pod OOMKilled mid-conversion | Chromium memory | raise the memory limit |

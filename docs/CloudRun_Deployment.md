@@ -7,13 +7,53 @@ The pipeline does three things: **build** the Docker image → **push** it to Ar
 **deploy** it to Cloud Run. All project-specific values are supplied as **substitution variables**
 (never hardcoded in the repo), so the same `cloudbuild.yaml` works for anyone.
 
+```mermaid
+flowchart LR
+    subgraph github["GitHub"]
+        push["push to main"]
+    end
+
+    subgraph pipeline["Cloud Build pipeline (cloudbuild.yaml)"]
+        direction LR
+        trig["trigger<br/>(substitution variables)"]
+        build["build image<br/>(VITE_* baked in<br/>as build args)"]
+        pushstep["push image"]
+        deploy["gcloud run deploy"]
+        trig --> build --> pushstep --> deploy
+    end
+
+    ar[("Artifact<br/>Registry")]
+
+    subgraph runsvc["Cloud Run"]
+        svc["service<br/>2Gi memory, max-instances=1,<br/>listens on $PORT"]
+    end
+
+    subgraph once["One-time setup (steps 5 and 6)"]
+        public{"make service public<br/>(allUsers invoker)"}
+        register{"register URL<br/>(Firebase domains +<br/>OAuth JS origins)"}
+    end
+
+    push --> trig
+    pushstep --> ar
+    ar -.->|image| svc
+    deploy --> svc
+    svc --> public --> register --> ready["public HTTPS URL:<br/>sign-in and diagram<br/>embedding work"]
+
+    classDef step fill:#1f6feb,color:#fff,stroke:#0d419d
+    classDef gate fill:#9e6a03,color:#fff,stroke:#693e00
+    classDef done fill:#238636,color:#fff,stroke:#196c2e
+    class trig,build,pushstep,deploy,svc step
+    class public,register gate
+    class ready done
+```
+
 ---
 
 ## 1. Prerequisites
 
 - A **Google Cloud project** with billing enabled, and the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install).
-- A **Firebase project** (can be the same GCP project) with **Google sign-in** enabled — see the
-  [main README](../README.md#-quickstart) for the Firebase/OAuth setup.
+- A **Firebase project** (can be the same GCP project) with **Google sign-in** enabled; see the
+  [main README](../README.md#quickstart) for the Firebase/OAuth setup.
 - Enable the required APIs:
   ```bash
   gcloud services enable \
@@ -44,13 +84,13 @@ gcloud artifacts repositories create cloud-run-source-deploy \
 | Variable | Example | Meaning |
 |---|---|---|
 | `_AR_PROJECT_ID` | `my-gcp-project` | Your GCP project ID |
-| `_AR_HOSTNAME` | `us-central1-docker.pkg.dev` | Artifact Registry host — **must match your region** |
+| `_AR_HOSTNAME` | `us-central1-docker.pkg.dev` | Artifact Registry host (**must match your region**) |
 | `_AR_REPOSITORY` | `cloud-run-source-deploy` | The Artifact Registry repo from step 2 |
 | `_DEPLOY_REGION` | `us-central1` | Cloud Run + Artifact Registry region |
 | `_SERVICE_NAME` | `md-to-docs` | Your Cloud Run service name |
 | `REPO_NAME` | `your-repo` | Auto-provided for repo-connected triggers; set manually for CLI builds |
 
-**Build-time app config (`VITE_*`)** — these are inlined into the client bundle at build time, so
+**Build-time app config (`VITE_*`)**: these are inlined into the client bundle at build time, so
 they **must** be set here (setting them as Cloud Run *runtime* env vars does nothing). They're public
 web-config values (they ship in the client bundle), not secrets:
 
@@ -65,7 +105,7 @@ _VITE_FIREBASE_MEASUREMENT_ID   # optional
 _VITE_GOOGLE_CLIENT_ID
 ```
 
-> ⚠️ **Don't hardcode these into `cloudbuild.yaml`.** The repo's secret-scan (gitleaks) flags
+> **Don't hardcode these into `cloudbuild.yaml`.** The repo's secret-scan (gitleaks) flags
 > hardcoded substitution values. Keep them in the trigger / CLI flags.
 
 ## 4. Create the Cloud Build trigger (CI/CD from GitHub)
@@ -77,7 +117,7 @@ _VITE_GOOGLE_CLIENT_ID
    - **Substitution variables:** add every variable from step 3 with your values.
 3. Save. Now every push to `main` builds and deploys automatically.
 
-## 5. First deploy — make the service public
+## 5. First deploy: make the service public
 
 `cloudbuild.yaml` deliberately does **not** set public access (so the pipeline doesn't fail on orgs
 that restrict it). After your first successful deploy, make the service reachable **once**:
@@ -93,7 +133,7 @@ gcloud run services add-iam-policy-binding md-to-docs \
 > **Org policy note:** if your organization enforces *Domain Restricted Sharing*
 > (`iam.allowedPolicyMemberDomains`), the `allUsers` binding is blocked. Ask an org admin to grant a
 > policy exception for the project, or expose the service another way (e.g. a load balancer with IAP).
-> Symptom of a private service: `403 Forbidden — request was not authenticated`.
+> Symptom of a private service: a `403 Forbidden` page saying the request was not authenticated.
 
 ## 6. Post-deploy: register the Cloud Run URL
 
@@ -145,10 +185,10 @@ _VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 - **Memory `2Gi`** is set because server-side Mermaid rendering runs headless Chromium (heavy). Lower
   values can OOM during diagram conversion.
 - **`--max-instances=1`** is set because the MCP session state and the temporary diagram-image host
-  live in memory — the SSE connection and its callbacks must reach the same instance. If you don't use
+  live in memory; the SSE connection and its callbacks must reach the same instance. If you don't use
   the MCP server, you can raise this.
 - **`--min-instances=1`** (commented out in `cloudbuild.yaml`) keeps synced MCP sessions warm across
-  requests; scale-to-zero loses in-memory state. It costs an always-on instance — enable only if needed.
+  requests; scale-to-zero loses in-memory state. It costs an always-on instance, so enable it only if needed.
 - **`--no-cache`** in the build step guarantees fresh builds; remove it for faster incremental builds.
 
 ## Troubleshooting
@@ -158,5 +198,5 @@ _VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 | `403 Forbidden / not authenticated` | Service is private | Step 5 (make public) |
 | Sign-in: `apiKey is missing` | `VITE_*` not passed at build | Set the `_VITE_*` substitutions (step 3) |
 | Sign-in: `Error 400: origin_mismatch` | Origin not authorized | Add the URL to OAuth JS origins (step 6) |
-| `Service not found` on deploy | n/a | `cloudbuild.yaml` uses `gcloud run deploy`, which creates the service — ensure the region/name are correct |
+| `Service not found` on deploy | n/a | `cloudbuild.yaml` uses `gcloud run deploy`, which creates the service; ensure the region/name are correct |
 | Mermaid diagrams blank in the doc | Image URL unreachable / OOM | Ensure the service is public and has `2Gi` memory |

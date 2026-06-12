@@ -2,22 +2,24 @@
 
 ## Supported Versions
 
-We currently provide security updates and support for the latest branch/version of the application. 
+Security updates are provided for the latest branch/version of the application only.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| Older   | :x:                |
+| Version | Supported |
+| ------- | --------- |
+| Latest  | Yes       |
+| Older   | No        |
 
 ## Reporting a Vulnerability
 
-We take the security of our application and user data extremely seriously. 
+Report security issues on GitHub:
 
-If you discover a security vulnerability within this project, please send an e-mail directly to the project maintainer at **alister.baroi@gmail.com**. 
+* **Preferred: private vulnerability report.** Go to the repository's [Security tab](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/security) and choose **"Report a vulnerability"**. Only the maintainer can see the report until a fix is released.
+* **Open an [issue](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/issues)** for low-sensitivity problems, such as a vulnerable dependency flagged by an audit. Issues are public, so leave out working exploit details.
+* **Open a pull request** if you already have a fix; PRs target the `dev` branch (see the [Contributing guide](CONTRIBUTING.md)).
 
-Please include the following details in your report to help us understand and resolve the issue quickly:
-* A descriptive overview of the vulnerability.
-* Detailed steps to reproduce the issue.
+To help us understand and resolve the issue quickly, include:
+* An overview of the vulnerability.
+* Steps to reproduce it.
 * Any potential impact or suggested mitigations.
 
-We will endeavor to respond to your report as quickly as possible. Please **do not** report security vulnerabilities through public issue trackers or discussion boards to protect the integrity of the application while a patch is being developed.
+We aim to respond as quickly as possible.
