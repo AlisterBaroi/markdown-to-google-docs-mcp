@@ -599,7 +599,8 @@ async function sendMessage(line) {
       "Content-Encoding": "none"
     });
 
-    const sessionId = Math.random().toString(36).substring(2, 11);
+    // CSPRNG: this ID is the sole credential gating /api/mcp/message for the session.
+    const sessionId = crypto.randomBytes(16).toString("hex");
     const clientOs = (req.headers["x-client-os"] as string) || "";
     activeMCPSessions.set(sessionId, { res, mcpToken: token, connectedAt: Date.now(), clientOs });
 
