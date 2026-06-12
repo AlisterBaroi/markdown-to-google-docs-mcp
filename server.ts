@@ -4,6 +4,7 @@
  */
 
 import express from "express";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { parseMarkdown } from "./src/utils/markdownParser";
@@ -215,6 +216,21 @@ async function renderMermaidPngServerSide(
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Exactly one trusted proxy hop in front of us (Cloud Run / the ingress), so
+  // req.ip resolves to the real client address instead of the proxy's.
+  app.set("trust proxy", 1);
+
+  // Global per-IP rate limit, covering every route (static SPA fallback, API,
+  // MCP, and the Chromium-backed conversion endpoints). The default in-memory
+  // store is correct here because the service must run as a single instance
+  // anyway (MCP session state lives in memory; see max-instances=1/replicas: 1).
+  app.use(rateLimit({
+    windowMs: 60 * 1000,
+    limit: 300, // generous: a full SPA page load is a few dozen requests
+    standardHeaders: true,
+    legacyHeaders: false,
+  }));
 
   // Load persisted sessions on start
   loadPersistedSessions();
@@ -599,7 +615,8 @@ async function sendMessage(line) {
       "Content-Encoding": "none"
     });
 
-    const sessionId = Math.random().toString(36).substring(2, 11);
+    // CSPRNG: this ID is the sole credential gating /api/mcp/message for the session.
+    const sessionId = crypto.randomBytes(16).toString("hex");
     const clientOs = (req.headers["x-client-os"] as string) || "";
     activeMCPSessions.set(sessionId, { res, mcpToken: token, connectedAt: Date.now(), clientOs });
 
@@ -653,7 +670,9 @@ async function sendMessage(line) {
       }
       return p;
     })();
-    console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(logParams));
+    // Constant format string with %s args: req.body values must never reach the
+    // format-string position of console.log (CodeQL js/tainted-format-string).
+    console.log('[MCP Server] JSON-RPC request received. ID: %s, Method: "%s", Params: %s', id, method, JSON.stringify(logParams));
 
     const { res: sseRes, mcpToken } = clientSession;
     const sessionData = sessions.get(mcpToken);

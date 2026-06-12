@@ -40,7 +40,9 @@ export default function FolderSelector({ accessToken, onSelectFolder, selectedFo
       let query = "mimeType='application/vnd.google-apps.folder' and trashed=false";
       
       if (searchQuery.trim()) {
-        query += ` and name contains '${searchQuery.replace(/'/g, "\\'")}'`;
+        // Drive query escaping: backslashes first, then quotes (order matters).
+        const escaped = searchQuery.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        query += ` and name contains '${escaped}'`;
       } else {
         query += ` and '${currentFolder.id}' in parents`;
       }

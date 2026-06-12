@@ -1,5 +1,9 @@
 name: CI
 
+# Least privilege: checkout only — nothing in this workflow writes via the API.
+permissions:
+  contents: read
+
 on:
   # Non-main branches: run on push and PRs.
   push:

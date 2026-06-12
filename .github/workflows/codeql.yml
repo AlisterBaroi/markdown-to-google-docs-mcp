@@ -1,0 +1,43 @@
+name: CodeQL
+
+on:
+  # Non-main branches: run on push and PRs, as before.
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches-ignore: [main]
+  # main: run only nightly (the schedule trigger always runs on the default branch, main),
+  # alongside the other nightly CIs. Not a merge requirement.
+  schedule:
+    - cron: "0 0 * * *" # 00:00 UTC (midnight GMT) every night
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload results to the Security tab
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions # scan the GitHub Actions workflows themselves
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

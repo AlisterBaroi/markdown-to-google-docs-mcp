@@ -82,8 +82,10 @@ function stripMarkdownFormatting(text: string): {
     }
   };
 
-  // Links
-  doReplace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, start) => {
+  // Links. The negated classes exclude the delimiters themselves ([ in text;
+  // parens/whitespace in URLs), so a scan that won't match bails out quickly
+  // instead of backtracking polynomially (CodeQL js/polynomial-redos).
+  doReplace(/\[([^\][]+)\]\(([^()\s]+)\)/g, (match, start) => {
     return {
       replacement: match[1],
       prefixLen: 1,
@@ -93,8 +95,9 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // bold italic ***text***
-  doReplace(/(\*\*\*)(.*?)\1/g, (match, start) => {
+  // bold italic ***text***. Tempered content (single *s allowed, never a run
+  // that opens a delimiter) keeps backtracking linear (CodeQL js/polynomial-redos).
+  doReplace(/(\*\*\*)((?:[^*]|\*(?!\*\*))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -106,8 +109,8 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // bold **text**
-  doReplace(/(\*\*)(.*?)\1/g, (match, start) => {
+  // bold **text** (tempered content; see note on the *** pass above)
+  doReplace(/(\*\*)((?:[^*]|\*(?!\*))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -116,8 +119,8 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // underline __text__
-  doReplace(/(__)(.*?)\1/g, (match, start) => {
+  // underline __text__ (tempered content; see note on the *** pass above)
+  doReplace(/(__)((?:[^_]|_(?!_))+)\1/g, (match, start) => {
     const textLen = match[2].length;
     return {
       replacement: match[2],
@@ -126,18 +129,21 @@ function stripMarkdownFormatting(text: string): {
     };
   });
 
-  // italic *text* or _text_
-  doReplace(/(\*|_)(.*?)\1/g, (match, start) => {
-    const textLen = match[2].length;
-    return {
-      replacement: match[2],
-      prefixLen: 1,
-      newRanges: [{ type: "italic", start, end: start + textLen }],
-    };
-  });
+  // italic *text* or _text_. One pass per delimiter so the content class can
+  // exclude it outright, keeping backtracking linear (CodeQL js/polynomial-redos).
+  for (const italicRegex of [/\*([^*]+)\*/g, /_([^_]+)_/g]) {
+    doReplace(italicRegex, (match, start) => {
+      const textLen = match[1].length;
+      return {
+        replacement: match[1],
+        prefixLen: 1,
+        newRanges: [{ type: "italic", start, end: start + textLen }],
+      };
+    });
+  }
 
-  // strikethrough ~~text~~
-  doReplace(/~~(.*?)~~/g, (match, start) => {
+  // strikethrough ~~text~~ (tempered content; see note on the *** pass above)
+  doReplace(/~~((?:[^~]|~(?!~))+)~~/g, (match, start) => {
     const textLen = match[1].length;
     return {
       replacement: match[1],
@@ -367,9 +373,12 @@ export function parseMarkdown(
     }
 
     if (inFrontmatter) {
-      const match = trimmedLine.match(/^title:\s*(.*)$/i);
+      // The \S anchor keeps \s* and the capture unambiguous, so backtracking
+      // stays linear (CodeQL js/polynomial-redos). The group goes optional so
+      // a bare "title:" still matches; the capture is then undefined.
+      const match = trimmedLine.match(/^title:\s*(\S.*)?$/i);
       if (match) {
-        extractedTitle = match[1].replace(/['"]/g, "").trim();
+        extractedTitle = (match[1] || "").replace(/['"]/g, "").trim();
       }
       continue;
     }
@@ -379,8 +388,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Headers
-    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.*)$/);
+    // Match Headers. The \S anchor keeps \s+ and the capture unambiguous, so
+    // backtracking stays linear (CodeQL js/polynomial-redos).
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(\S.*)$/);
     if (headingMatch) {
       const {
         cleaned: content,
@@ -457,8 +467,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Bullet List (- item, * item, + item)
-    const bulletMatch = trimmedLine.match(/^[-*+]\s+(.*)$/);
+    // Match Bullet List (- item, * item, + item). The \S anchor keeps \s+ and the
+    // capture unambiguous, so backtracking stays linear (CodeQL js/polynomial-redos).
+    const bulletMatch = trimmedLine.match(/^[-*+]\s+(\S.*)$/);
     if (bulletMatch) {
       const {
         cleaned: content,
@@ -481,8 +492,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Numbered List (1. item, 2. item)
-    const numberedMatch = trimmedLine.match(/^\d+\.\s+(.*)$/);
+    // Match Numbered List (1. item, 2. item). The \S anchor keeps \s+ and the
+    // capture unambiguous, so backtracking stays linear (CodeQL js/polynomial-redos).
+    const numberedMatch = trimmedLine.match(/^\d+\.\s+(\S.*)$/);
     if (numberedMatch) {
       const {
         cleaned: content,
