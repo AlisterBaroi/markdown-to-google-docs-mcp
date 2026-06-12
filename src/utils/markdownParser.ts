@@ -379,8 +379,9 @@ export function parseMarkdown(
       continue;
     }
 
-    // Match Headers
-    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.*)$/);
+    // Match Headers. The \S anchor keeps \s+ and the capture unambiguous, so
+    // backtracking stays linear (CodeQL js/polynomial-redos).
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s+(\S.*)$/);
     if (headingMatch) {
       const {
         cleaned: content,
