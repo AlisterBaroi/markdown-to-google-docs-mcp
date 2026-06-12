@@ -653,7 +653,9 @@ async function sendMessage(line) {
       }
       return p;
     })();
-    console.log(`[MCP Server] JSON-RPC request received. ID: ${id}, Method: "${method}", Params:`, JSON.stringify(logParams));
+    // Constant format string with %s args: req.body values must never reach the
+    // format-string position of console.log (CodeQL js/tainted-format-string).
+    console.log('[MCP Server] JSON-RPC request received. ID: %s, Method: "%s", Params: %s', id, method, JSON.stringify(logParams));
 
     const { res: sseRes, mcpToken } = clientSession;
     const sessionData = sessions.get(mcpToken);
