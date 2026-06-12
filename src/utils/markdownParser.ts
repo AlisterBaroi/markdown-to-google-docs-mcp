@@ -367,9 +367,12 @@ export function parseMarkdown(
     }
 
     if (inFrontmatter) {
-      const match = trimmedLine.match(/^title:\s*(.*)$/i);
+      // The \S anchor keeps \s* and the capture unambiguous, so backtracking
+      // stays linear (CodeQL js/polynomial-redos). The group goes optional so
+      // a bare "title:" still matches; the capture is then undefined.
+      const match = trimmedLine.match(/^title:\s*(\S.*)?$/i);
       if (match) {
-        extractedTitle = match[1].replace(/['"]/g, "").trim();
+        extractedTitle = (match[1] || "").replace(/['"]/g, "").trim();
       }
       continue;
     }
