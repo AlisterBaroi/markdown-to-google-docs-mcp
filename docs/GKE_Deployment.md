@@ -7,16 +7,55 @@ minimal: a **Deployment**, a **Service**, and an **Ingress** for a public HTTPS 
 > Prefer the simplest path? [Cloud Run](./CloudRun_Deployment.md) is less work for this app. Use GKE
 > if you already run a cluster or need to co-locate it with other workloads.
 
+```mermaid
+flowchart LR
+    subgraph machine["Your machine"]
+        direction LR
+        dbuild["docker build<br/>(VITE_* build args)"]
+        dpush["docker push"]
+        kapply["kubectl apply<br/>(deployment.yaml,<br/>ingress.yaml)"]
+        dbuild --> dpush
+    end
+
+    ar[("Artifact<br/>Registry")]
+
+    subgraph cluster["GKE cluster"]
+        direction LR
+        dep["Deployment<br/>replicas: 1, 2Gi,<br/>/api/health probes"]
+        svc["Service<br/>(ClusterIP)"]
+        ing["Ingress +<br/>ManagedCertificate"]
+        dep --> svc --> ing
+    end
+
+    dns{"DNS: point your domain<br/>at the Ingress IP"}
+
+    subgraph once["One-time setup (step 5)"]
+        register{"register URL<br/>(Firebase domains +<br/>OAuth JS origins)"}
+    end
+
+    dpush --> ar
+    ar -.->|image| dep
+    kapply --> dep
+    ing --> dns --> register --> ready["public HTTPS URL:<br/>sign-in and diagram<br/>embedding work"]
+
+    classDef step fill:#1f6feb,color:#fff,stroke:#0d419d
+    classDef gate fill:#9e6a03,color:#fff,stroke:#693e00
+    classDef done fill:#238636,color:#fff,stroke:#196c2e
+    class dbuild,dpush,kapply,dep,svc,ing step
+    class dns,register gate
+    class ready done
+```
+
 ---
 
 ## Key facts about this app (they shape the manifests)
 
 - **Listens on `$PORT`** (defaults to `3000`; we set `8080` below).
-- **Health endpoint:** `GET /api/health` — used for liveness/readiness probes.
-- **Memory:** allow **~2Gi** — server-side Mermaid rendering runs headless Chromium.
+- **Health endpoint:** `GET /api/health`, used for liveness/readiness probes.
+- **Memory:** allow **~2Gi**; server-side Mermaid rendering runs headless Chromium.
 - **Run a single replica** (`replicas: 1`). MCP session state and the temporary diagram-image host
   live **in memory**, so the SSE connection and its follow-up calls must hit the **same** pod. (The
-  MCP bridge doesn't carry cookies, so `Service` session affinity won't help — keep it to one pod.)
+  MCP bridge doesn't carry cookies, so `Service` session affinity won't help; keep it to one pod.)
 - **`VITE_*` Firebase config is baked into the image at build time** (Docker `--build-arg`), *not*
   passed as runtime env. So the Deployment needs **no** Firebase secrets.
 - Chromium runs with `--disable-dev-shm-usage` (set in code), so the default small `/dev/shm`
@@ -26,7 +65,7 @@ minimal: a **Deployment**, a **Service**, and an **Ingress** for a public HTTPS 
 
 - A GKE cluster + `kubectl` configured (`gcloud container clusters get-credentials …`).
 - An **Artifact Registry** Docker repo, and the **Docs/Drive APIs + Firebase** set up (see the
-  [Cloud Run guide](./CloudRun_Deployment.md) §1–3 for API enablement and the Firebase/OAuth setup).
+  [Cloud Run guide](./CloudRun_Deployment.md) steps 1 to 3 for API enablement and the Firebase/OAuth setup).
 
 ## 2. Build & push the image (with the build-time config)
 
@@ -53,7 +92,7 @@ docker push "$IMAGE"
 
 ## 3. Deployment + Service
 
-The manifest ships with the repo at **[`k8s/deployment.yaml`](../k8s/deployment.yaml)** — a
+The manifest ships with the repo at **[`k8s/deployment.yaml`](../k8s/deployment.yaml)**: a
 single-replica **Deployment** (port 8080, `/api/health` liveness+readiness probes, up to 2Gi for
 Chromium) plus a `ClusterIP` **Service**. **Edit the `image:` field** to the path you pushed in
 step 2, then apply:
@@ -65,10 +104,10 @@ kubectl rollout status deployment/markdown-to-google-docs-mcp
 
 ## 4. Expose it publicly (Ingress + managed TLS)
 
-A public HTTPS URL is **required** — Google's servers fetch rendered Mermaid images over the public
+A public HTTPS URL is **required**: Google's servers fetch rendered Mermaid images over the public
 internet, and Google sign-in needs a real origin.
 
-The repo ships **[`k8s/ingress.yaml`](../k8s/ingress.yaml)** — a GKE `Ingress` plus a Google-managed
+The repo ships **[`k8s/ingress.yaml`](../k8s/ingress.yaml)**: a GKE `Ingress` plus a Google-managed
 TLS certificate (`ManagedCertificate`). **Edit `docs.example.com` to your domain** (it appears in two
 places), then apply:
 
@@ -77,8 +116,8 @@ kubectl apply -f k8s/ingress.yaml
 kubectl get ingress markdown-to-google-docs-mcp   # note the external IP, point your DNS at it
 ```
 
-(No simpler option needed? `kubectl patch svc markdown-to-google-docs-mcp -p '{"spec":{"type":"LoadBalancer"}}'`
-gives you a plain external IP — but you won't get HTTPS/a domain, which sign-in really wants.)
+(If you just need something quick, `kubectl patch svc markdown-to-google-docs-mcp -p '{"spec":{"type":"LoadBalancer"}}'`
+gives you a plain external IP, but you won't get HTTPS or a domain, which sign-in needs.)
 
 ## 5. Register the URL (required for sign-in)
 
@@ -87,7 +126,7 @@ Add your domain to **both** allowlists (same as the Cloud Run guide §6):
 - **Google Cloud → Credentials → OAuth Web client → Authorized JavaScript origins** → `https://docs.example.com`
 
 Then restrict who can sign in via the Google/Firebase console (OAuth consent screen → **Internal**)
-if you want org-only access — see the [Cloud Run guide](./CloudRun_Deployment.md#6-post-deploy-register-the-cloud-run-url).
+if you want org-only access; see the [Cloud Run guide](./CloudRun_Deployment.md#6-post-deploy-register-the-cloud-run-url).
 
 ## Troubleshooting
 

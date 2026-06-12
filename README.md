@@ -1,8 +1,8 @@
-# Markdown → Google Docs 📝➡️📄
+# Markdown to Google Docs
 
-**An open-source Markdown to Google Docs converter — use the web app, _or_ let your AI agent (Claude Code) generate Docs for you over MCP.**
+**An open-source Markdown to Google Docs converter: use the web app, or let your AI agent (Claude Code) generate Docs for you over MCP.**
 
-Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive — headings, lists, tables, bold/italic, code blocks, and even **rendered Mermaid diagrams**. It also runs as a **Model Context Protocol (MCP) server**, so **Claude Code** (or any MCP client) can write formatted Google Docs straight to your Drive from a conversation.
+Drop in `.md` files and get properly styled Google Docs in your Drive: headings, lists, tables, bold/italic, code blocks, and rendered Mermaid diagrams. It also runs as a **Model Context Protocol (MCP) server**, so **Claude Code** (or any MCP client) can write formatted Google Docs straight to your Drive from a conversation.
 
 <!-- Badges render once the repo is public -->
 [![CI](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AlisterBaroi/markdown-to-google-docs-mcp/actions/workflows/ci.yml)
@@ -14,27 +14,27 @@ Drop in `.md` files and get clean, beautifully styled Google Docs in your Drive 
      markdown, google-docs, google-drive, markdown-to-google-docs, mcp,
      model-context-protocol, claude, claude-code, mermaid, react, typescript, firebase -->
 
-![Markdown to Google Docs converter — demo UI](.github/demo.gif)
+![Markdown to Google Docs converter, demo UI](.github/demo.gif)
 > _Built with React 19 + Vite, an Express backend, the Google Docs & Drive APIs, and the Model Context Protocol._
 
 ## Why?
 
-Markdown is where ideas get written; Google Docs is where teams review and share them. Copy-pasting between the two destroys formatting and wastes time. **Markdown → Docs** does the conversion faithfully — and uniquely, it works **two ways**:
+Markdown is where ideas get written; Google Docs is where teams review and share them. Copy-pasting between the two destroys formatting and wastes time. **Markdown → Docs** does the conversion faithfully, and it works **two ways**:
 
-1. **As a web app** — drag, drop, convert, done.
-2. **As an MCP server** — let Claude Code (or Claude Desktop) generate a styled Google Doc directly from a conversation, using your own Drive.
+1. **As a web app**: drop in a file, pick a Drive folder, convert.
+2. **As an MCP server**: Claude Code (or Claude Desktop) generates a styled Google Doc directly from a conversation, using your own Drive.
 
-## ✨ Features
+## Features
 
-- **📄 Faithful Markdown → Google Docs** — headings, bold/italic/underline/strikethrough, ordered & unordered lists, tables, horizontal rules, and code blocks.
-- **🧜 Mermaid diagrams → real images** — fenced ` ```mermaid ` blocks are rendered and embedded as images in the doc (rendered locally, never sent to a third-party service).
-- **🎨 Typography presets** — configure fonts, sizes, spacing, and colors per element; reuse them across conversions.
-- **📁 Drive folder browser** — navigate, search, and create folders in the UI to pick exactly where docs land.
-- **🤖 MCP server for AI agents** — connect Claude Code / Claude Desktop and convert Markdown to Docs from a prompt. A live **Connected Agents** panel shows which clients are attached (OS, uptime, session).
-- **🔐 Google OAuth with silent refresh** — Firebase sign-in plus background token refresh, so long sessions don't break mid-work.
-- **🌗 Modern UI** — Tailwind CSS, dark/light mode, micro-interactions.
+- **Faithful Markdown to Google Docs conversion**: headings, bold/italic/underline/strikethrough, ordered and unordered lists, tables, horizontal rules, and code blocks.
+- **Mermaid diagrams as real images**: fenced ` ```mermaid ` blocks are rendered and embedded as images in the doc (rendered locally, never sent to a third-party service).
+- **Typography presets**: configure fonts, sizes, spacing, and colors per element; reuse them across conversions.
+- **Drive folder browser**: navigate, search, and create folders in the UI to pick exactly where docs land.
+- **MCP server for AI agents**: connect Claude Code or Claude Desktop and convert Markdown to Docs from a prompt. A live **Connected Agents** panel shows which clients are attached (OS, uptime, session).
+- **Google OAuth with silent refresh**: Firebase sign-in plus background token refresh, so long sessions don't break mid-work.
+- **Modern UI**: Tailwind CSS, dark/light mode, subtle animations.
 
-## 🧭 How it works
+## How it works
 
 ```mermaid
 flowchart LR
@@ -44,9 +44,16 @@ flowchart LR
     C -->|mermaid block| E[Render to image] --> D
     D --> F[Styled Google Doc in your Drive]
     G[Claude Code / MCP client] -.->|convert_markdown_to_gdoc| B
+
+    classDef core fill:#1f6feb,color:#fff,stroke:#0d419d
+    classDef gate fill:#9e6a03,color:#fff,stroke:#693e00
+    classDef output fill:#238636,color:#fff,stroke:#196c2e
+    class B,D,E core
+    class C gate
+    class F output
 ```
 
-## 🚀 Quickstart
+## Quickstart
 
 ### Prerequisites
 - **Node 20+**
@@ -71,7 +78,7 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 VITE_FIREBASE_MEASUREMENT_ID=...
-# OAuth 2.0 Web client ID — used for silent token refresh (Google Identity Services)
+# OAuth 2.0 Web client ID, used for silent token refresh (Google Identity Services)
 VITE_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 ```
 
@@ -87,7 +94,7 @@ npm run dev
 ```
 Open **http://localhost:3000**, sign in with Google, drop in a `.md` file, and convert.
 
-## 🤖 Use it from Claude Code (MCP)
+## Use it from Claude Code (MCP)
 
 This app doubles as a remote MCP server. After signing in, open the in-app **MCP setup page** (`/mcp`) to get your personal connection token and the exact `claude mcp add …` command, then ask your agent:
 
@@ -95,7 +102,7 @@ This app doubles as a remote MCP server. After signing in, open the in-app **MCP
 
 The server exposes a `convert_markdown_to_gdoc` tool that creates a styled doc in your Drive and returns the link. The MCP page also lists your currently connected agents in real time.
 
-## 🛠️ Tech stack
+## Tech stack
 
 | Layer | Tech |
 |---|---|
@@ -107,14 +114,14 @@ The server exposes a `convert_markdown_to_gdoc` tool that creates a styled doc i
 | AI integration | Model Context Protocol (SSE transport) |
 | Tooling | Vitest, GitHub Actions, gitleaks |
 
-## 📦 Build & deploy
+## Build & deploy
 
 ```bash
 npm run build   # builds the client (Vite) and bundles the server (esbuild) into dist/
 npm start       # runs the production server: node dist/server.cjs
 ```
 
-Production runs as a **Node/Express server** (it serves the built client *and* the API/MCP endpoints) — it is **not** a static-only SPA. A `Dockerfile` is included (Node + Chromium for server-side Mermaid rendering).
+Production runs as a **Node/Express server** (it serves the built client *and* the API/MCP endpoints); it is **not** a static-only SPA. A `Dockerfile` is included (Node + Chromium for server-side Mermaid rendering).
 
 **Deploying to Cloud Run:** a ready-to-use Cloud Build pipeline ([`cloudbuild.yaml`](cloudbuild.yaml))
 builds, pushes, and deploys on every push to `main`. See **[docs/CloudRun_Deployment.md](docs/CloudRun_Deployment.md)**
@@ -122,29 +129,29 @@ for the full step-by-step guide (Artifact Registry, trigger setup, substitution 
 service public, and registering the URL). Key points:
 - The server listens on `$PORT` (Cloud Run injects `8080`).
 - Allocate **~2 GB memory** (headless Chromium for Mermaid is heavy).
-- Use **`--max-instances=1`** — MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
+- Use **`--max-instances=1`**: MCP session state and the temporary diagram-image host live in memory, so the SSE connection and its callbacks must hit the same instance.
 - The `VITE_*` Firebase values are **build-time** substitution variables (baked into the bundle by Cloud Build), not runtime env vars.
 - Add your Cloud Run URL to **both** allowlists (Firebase Authorized domains *and* the OAuth client's Authorized JavaScript origins).
 
 **Other deployment targets:**
-- **Kubernetes / GKE** → [docs/GKE_Deployment.md](docs/GKE_Deployment.md) — Deployment + Service + Ingress manifests, with managed TLS.
-- **Local Kubernetes (kind)** → [docs/Local_Kubernetes_Deployment.md](docs/Local_Kubernetes_Deployment.md) — for testing the manifests locally (note: Mermaid embedding needs a public URL, so it won't render on `localhost`).
+- **Kubernetes / GKE** → [docs/GKE_Deployment.md](docs/GKE_Deployment.md): Deployment + Service + Ingress manifests, with managed TLS.
+- **Local Kubernetes (kind)** → [docs/Local_Kubernetes_Deployment.md](docs/Local_Kubernetes_Deployment.md): for testing the manifests locally (note: Mermaid embedding needs a public URL, so it won't render on `localhost`).
 
-## ✅ Tests & CI
+## Tests & CI
 
 ```bash
 npm test        # Vitest: parser unit tests + a server E2E (boots the built server)
 ```
-GitHub Actions runs **build + tests** and a **gitleaks secret scan** on every push/PR to non-`main` branches, and nightly on `main`. (`main` is protected: changes land only via PR, and merges require CI to pass — see the [Contributing guide](.github/CONTRIBUTING.md).)
+GitHub Actions runs **build + tests** and a **gitleaks secret scan** on every push/PR to non-`main` branches, and nightly on `main`. (`main` is protected: changes land only via PR, and merges require CI to pass; see the [Contributing guide](.github/CONTRIBUTING.md).)
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please read the [Contributing guide](.github/CONTRIBUTING.md) and our [Code of Conduct](.github/CODE_OF_CONDUCT.md). To report a vulnerability, see the [Security policy](.github/SECURITY.md).
+Contributions are welcome. Please read the [Contributing guide](.github/CONTRIBUTING.md) and our [Code of Conduct](.github/CODE_OF_CONDUCT.md). To report a vulnerability, see the [Security policy](.github/SECURITY.md).
 
-## ⭐ Support
+## Support
 
-If this saved you some copy-pasting, **star the repo** — it genuinely helps others find it.
+If this tool saves you some copy-pasting, consider starring the repo; it helps others find the project.
 
-## 📄 License
+## License
 
 [MIT](LICENSE) © [Alister Baroi](https://github.com/AlisterBaroi)
