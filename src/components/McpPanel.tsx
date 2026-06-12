@@ -376,7 +376,7 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
               <div className="flex gap-2">
                 <button
                   onClick={onRegenerateToken}
-                  className="flex-1 text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-850 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg py-1.5 px-3 flex items-center justify-center gap-1.5 transition border border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 cursor-pointer"
+                  className="flex-1 text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-900 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg py-1.5 px-3 flex items-center justify-center gap-1.5 transition border border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-slate-600 cursor-pointer"
                 >
                   <RefreshCw className="w-3 h-3" />
                   Regenerate Token
@@ -491,7 +491,7 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
 
                     <div className="space-y-4">
                       {/* Method A */}
-                      <div className="border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
+                      <div className="border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
                         <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
                           Method A: One-Liner Command (Unix Shells)
                         </span>
@@ -513,7 +513,7 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
                       </div>
 
                       {/* Method B */}
-                      <div className="border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
+                      <div className="border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 rounded-xl p-4 space-y-3">
                         <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase tracking-wider">
                           Method B: Local Bridge Script (Recommended for Windows & PowerShell)
                         </span>
