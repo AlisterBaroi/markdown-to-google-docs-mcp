@@ -143,6 +143,8 @@ export default function App() {
   const [sessionExpired, setSessionExpired] = useState(false);
   // Non-blocking note shown when some mermaid diagrams couldn't be embedded.
   const [diagramNote, setDiagramNote] = useState<string | null>(null);
+  // Non-blocking note shown when the browser cannot sync MCP credentials.
+  const [mcpSyncError, setMcpSyncError] = useState<string | null>(null);
 
   // App UI state
   const [activeTab, setActiveTab] = useState<'upload' | 'settings'>('upload');
@@ -211,10 +213,21 @@ export default function App() {
               settings
             })
           });
+          if (!res.ok) {
+            throw new Error(
+              `Server returned ${res.status}${res.statusText ? ` ${res.statusText}` : ""}.`
+            );
+          }
           const data = await res.json();
+          setMcpSyncError(null);
           console.log("[MCP] Credentials synchronized with server:", data);
         } catch (err) {
           console.error("[MCP] Credentials synchronization failed:", err);
+          setMcpSyncError(
+            `Could not sync MCP credentials with the server. MCP conversions may be unavailable until the connection recovers.${
+              err instanceof Error ? ` ${err.message}` : ""
+            }`
+          );
         }
       };
 
@@ -621,6 +634,12 @@ export default function App() {
             >
               Sign in again
             </button>
+          </div>
+        )}
+        {user && mcpSyncError && (
+          <div className="mb-6 flex items-start gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-semibold text-amber-800 dark:text-amber-300">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+            <span>{mcpSyncError}</span>
           </div>
         )}
         {!user ? (
