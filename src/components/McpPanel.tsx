@@ -34,14 +34,6 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
   const [agents, setAgents] = useState<Array<{ sessionId: string; name: string; version: string; os: string; connectedAt: number }>>([]);
 
   const [now, setNow] = useState(() => Date.now());
-  const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
-
-  const copySessionId = (sessionId: string) => {
-    navigator.clipboard.writeText(sessionId).then(() => {
-      setCopiedSessionId(sessionId);
-      setTimeout(() => setCopiedSessionId((current) => (current === sessionId ? null : current)), 1500);
-    });
-  };
 
   // Map Node's process.platform values to friendly OS names
   const osLabel = (platform: string) => {
@@ -102,11 +94,15 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
   const appOrigin = window.location.origin;
   const sseUrl = `${appOrigin}/api/mcp/sse?token=${mcpToken}`;
 
-  // Helper code copy mechanism
+  // Helper code copy mechanism; "Copied" feedback only after the write succeeds
   const handleCopy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 2000);
+      })
+      .catch((err) => console.error("Clipboard copy failed:", err));
   };
 
   // NOTE: the `--` separator is required. Without it `claude mcp add` interprets the
@@ -424,6 +420,8 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
               <ul className="space-y-2">
                 {agents.map((agent) => {
                   const osText = `OS: ${osLabel(agent.os)}`;
+                  const connectedAtText = `Connected at: ${new Date(agent.connectedAt).toLocaleString()}`;
+                  const sessionCopyKey = `session-${agent.sessionId}`;
                   return (
                   <li
                     key={agent.sessionId}
@@ -441,22 +439,23 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
                       </div>
                       <hr className="h-px border-0 bg-[linear-gradient(to_right,transparent_0%,#94a3b8_3%,#94a3b8_97%,transparent_100%)] dark:bg-[linear-gradient(to_right,transparent_0%,#475569_3%,#475569_97%,transparent_100%)] mb-[0.661875rem]" />
                       <div className="flex items-center gap-1.5 mt-0.5 ml-1.5">
-                        <span title={osText} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded shrink-0 max-w-36 truncate">
+                        <span title={osText} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded max-w-36 truncate">
                           {osText}
                         </span>
-                        <span
+                        <button
+                          type="button"
                           title={`SessionID: ${agent.sessionId} (click to copy)`}
-                          onClick={() => copySessionId(agent.sessionId)}
+                          onClick={() => handleCopy(agent.sessionId, sessionCopyKey)}
                           style={{ borderWidth: "0.1pt" }}
                           className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded whitespace-nowrap cursor-pointer"
                         >
                           {"SessionID: "}
                           <span className="font-bold">
-                            {copiedSessionId === agent.sessionId ? "Copied!" : truncateSessionId(agent.sessionId)}
+                            {copiedKey === sessionCopyKey ? "Copied!" : truncateSessionId(agent.sessionId)}
                           </span>
-                        </span>
+                        </button>
                       </div>
-                      <span title={`Connected at: ${new Date(agent.connectedAt).toLocaleString()}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
+                      <span title={connectedAtText} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
                         {"Uptime: "}<span className="font-bold">{formatUptime(agent.connectedAt)}</span>
                       </span>
                     </div>
