@@ -45,6 +45,10 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
     }
   };
 
+  // Keep the SessionID badge compact; the full value is shown via tooltip
+  const truncateSessionId = (sessionId: string) =>
+    sessionId.length > 6 ? `${sessionId.slice(0, 6)}..` : sessionId;
+
   // Render how long a connection has been alive (since connectedAt)
   const formatUptime = (connectedAt: number) => {
     const totalSec = Math.max(0, Math.floor((now - connectedAt) / 1000));
@@ -427,14 +431,14 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
                       </div>
                       <hr className="h-px border-0 bg-[linear-gradient(to_right,transparent_0%,#94a3b8_3%,#94a3b8_97%,transparent_100%)] dark:bg-[linear-gradient(to_right,transparent_0%,#475569_3%,#475569_97%,transparent_100%)] mb-[0.661875rem]" />
                       <div className="flex items-center gap-1.5 mt-0.5 ml-1.5">
-                        <span style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded">
+                        <span title={`OS: ${osLabel(agent.os)}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded shrink-0">
                           {`OS: ${osLabel(agent.os)}`}
                         </span>
-                        <span style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded truncate">
-                          {"SessionID: "}<span className="font-bold">{agent.sessionId}</span>
+                        <span title={`SessionID: ${agent.sessionId}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded">
+                          {"SessionID: "}<span className="font-bold">{truncateSessionId(agent.sessionId)}</span>
                         </span>
                       </div>
-                      <span style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
+                      <span title={`Uptime: ${formatUptime(agent.connectedAt)}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
                         {"Uptime: "}<span className="font-bold">{formatUptime(agent.connectedAt)}</span>
                       </span>
                     </div>
