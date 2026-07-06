@@ -34,6 +34,14 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
   const [agents, setAgents] = useState<Array<{ sessionId: string; name: string; version: string; os: string; connectedAt: number }>>([]);
 
   const [now, setNow] = useState(() => Date.now());
+  const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null);
+
+  const copySessionId = (sessionId: string) => {
+    navigator.clipboard.writeText(sessionId).then(() => {
+      setCopiedSessionId(sessionId);
+      setTimeout(() => setCopiedSessionId((current) => (current === sessionId ? null : current)), 1500);
+    });
+  };
 
   // Map Node's process.platform values to friendly OS names
   const osLabel = (platform: string) => {
@@ -414,7 +422,9 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
               </p>
             ) : (
               <ul className="space-y-2">
-                {agents.map((agent) => (
+                {agents.map((agent) => {
+                  const osText = `OS: ${osLabel(agent.os)}`;
+                  return (
                   <li
                     key={agent.sessionId}
                     className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -431,19 +441,28 @@ export default function McpPanel({ user, mcpToken, onRegenerateToken, onBack }: 
                       </div>
                       <hr className="h-px border-0 bg-[linear-gradient(to_right,transparent_0%,#94a3b8_3%,#94a3b8_97%,transparent_100%)] dark:bg-[linear-gradient(to_right,transparent_0%,#475569_3%,#475569_97%,transparent_100%)] mb-[0.661875rem]" />
                       <div className="flex items-center gap-1.5 mt-0.5 ml-1.5">
-                        <span title={`OS: ${osLabel(agent.os)}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded shrink-0">
-                          {`OS: ${osLabel(agent.os)}`}
+                        <span title={osText} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded shrink-0 max-w-36 truncate">
+                          {osText}
                         </span>
-                        <span title={`SessionID: ${agent.sessionId}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded">
-                          {"SessionID: "}<span className="font-bold">{truncateSessionId(agent.sessionId)}</span>
+                        <span
+                          title={`SessionID: ${agent.sessionId} (click to copy)`}
+                          onClick={() => copySessionId(agent.sessionId)}
+                          style={{ borderWidth: "0.1pt" }}
+                          className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded whitespace-nowrap cursor-pointer"
+                        >
+                          {"SessionID: "}
+                          <span className="font-bold">
+                            {copiedSessionId === agent.sessionId ? "Copied!" : truncateSessionId(agent.sessionId)}
+                          </span>
                         </span>
                       </div>
-                      <span title={`Uptime: ${formatUptime(agent.connectedAt)}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
+                      <span title={`Connected at: ${new Date(agent.connectedAt).toLocaleString()}`} style={{ borderWidth: "0.1pt" }} className="text-[10px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/40 border border-slate-400 dark:border-slate-500 px-1.5 py-0.5 rounded inline-block mt-1 ml-1.5">
                         {"Uptime: "}<span className="font-bold">{formatUptime(agent.connectedAt)}</span>
                       </span>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
