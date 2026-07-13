@@ -12,7 +12,10 @@ import { createBlankDoc, styleDocContent, moveFileToFolder } from "./src/utils/d
 import { ConversionSettings } from "./src/types";
 // Inlined at build time by esbuild (and resolved by tsx in dev), so serverInfo.version
 // always matches the released package.json version — same idea as Vite's __APP_VERSION__.
-import pkg from "./package.json" with { type: "json" };
+// Must stay a NAMED import: esbuild then tree-shakes the bundle down to the version
+// string, whereas a default import would inline the whole manifest (scripts, dependency
+// versions) into dist/server.cjs, which express.static serves publicly in production.
+import { version as pkgVersion } from "./package.json";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
@@ -704,7 +707,7 @@ async function sendMessage(line) {
             },
             serverInfo: {
               name: "markdown-to-gdocs-mcp",
-              version: pkg.version
+              version: pkgVersion
             }
           }
         };
