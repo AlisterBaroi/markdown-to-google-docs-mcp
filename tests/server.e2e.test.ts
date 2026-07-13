@@ -10,13 +10,17 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const PORT = 8099;
 const BASE = `http://127.0.0.1:${PORT}`;
 const ROOT = process.cwd();
 const serverBuilt = existsSync(path.resolve(ROOT, "dist/server.cjs"));
+// Isolated session store: the default SESSIONS_FILE in os.tmpdir() is shared with real
+// dev-server runs, and the MCP tests below register fake sessions we must not leak there.
+const SESSIONS_FILE = path.join(os.tmpdir(), `md-to-gdocs-e2e-sessions-${process.pid}.json`);
 
 let proc: ChildProcess | undefined;
 
@@ -34,11 +38,35 @@ async function waitForHealth(timeoutMs = 30000) {
   throw new Error("Server did not become healthy in time");
 }
 
+// Yields parsed SSE events (heartbeat comment frames carry no data and are skipped).
+async function* sseEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<{ event: string; data: string }> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buf += decoder.decode(value, { stream: true });
+    let sep;
+    while ((sep = buf.indexOf("\n\n")) !== -1) {
+      const block = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      let event = "message";
+      let data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice("event: ".length).trim();
+        else if (line.startsWith("data: ")) data += line.slice("data: ".length);
+      }
+      if (data) yield { event, data };
+    }
+  }
+}
+
 describe.skipIf(!serverBuilt)("server E2E (built production server)", () => {
   beforeAll(async () => {
     proc = spawn("node", ["dist/server.cjs"], {
       cwd: ROOT,
-      env: { ...process.env, NODE_ENV: "production", PORT: String(PORT) },
+      env: { ...process.env, NODE_ENV: "production", PORT: String(PORT), SESSIONS_FILE },
       stdio: "ignore",
     });
     await waitForHealth();
@@ -46,6 +74,7 @@ describe.skipIf(!serverBuilt)("server E2E (built production server)", () => {
 
   afterAll(() => {
     proc?.kill("SIGKILL");
+    rmSync(SESSIONS_FILE, { force: true });
   });
 
   it("health endpoint responds ok", async () => {
@@ -108,4 +137,57 @@ describe.skipIf(!serverBuilt)("server E2E (built production server)", () => {
     const res = await fetch(`${BASE}/api/mcp/sse`);
     expect(res.status).toBe(401);
   });
+
+  it("MCP initialize reports the package.json version in serverInfo", async () => {
+    const pkgVersion = JSON.parse(readFileSync(path.resolve(ROOT, "package.json"), "utf8")).version;
+
+    // /api/mcp/sync stores credentials without validating them against Google
+    // (that only happens when a tool runs), so a fake token passes the SSE auth gate.
+    const sync = await fetch(`${BASE}/api/mcp/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mcpToken: "e2e-version-token",
+        accessToken: "fake-access-token",
+        email: "e2e@test.local",
+        displayName: "E2E Test",
+      }),
+    });
+    expect(sync.status).toBe(200);
+
+    const ctrl = new AbortController();
+    try {
+      const sse = await fetch(`${BASE}/api/mcp/sse?token=e2e-version-token`, { signal: ctrl.signal });
+      expect(sse.status).toBe(200);
+      const events = sseEvents(sse.body!);
+
+      // First frame is the "endpoint" event carrying the JSON-RPC message URL.
+      const endpoint = await events.next();
+      expect(endpoint.done).toBe(false);
+      expect(endpoint.value.event).toBe("endpoint");
+      const messageUrl = endpoint.value.data;
+
+      const post = await fetch(messageUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: { clientInfo: { name: "e2e-test", version: "0.0.0" } },
+        }),
+      });
+      expect(post.status).toBe(200);
+
+      // The initialize result arrives on the SSE stream, not the POST response.
+      const msg = await events.next();
+      expect(msg.done).toBe(false);
+      const payload = JSON.parse(msg.value.data);
+      expect(payload.id).toBe(1);
+      expect(payload.result.serverInfo.name).toBe("markdown-to-gdocs-mcp");
+      expect(payload.result.serverInfo.version).toBe(pkgVersion);
+    } finally {
+      ctrl.abort();
+    }
+  }, 15000);
 });

@@ -10,6 +10,9 @@ import { createServer as createViteServer } from "vite";
 import { parseMarkdown } from "./src/utils/markdownParser";
 import { createBlankDoc, styleDocContent, moveFileToFolder } from "./src/utils/docsExporter";
 import { ConversionSettings } from "./src/types";
+// Inlined at build time by esbuild (and resolved by tsx in dev), so serverInfo.version
+// always matches the released package.json version — same idea as Vite's __APP_VERSION__.
+import pkg from "./package.json" with { type: "json" };
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
@@ -701,7 +704,7 @@ async function sendMessage(line) {
             },
             serverInfo: {
               name: "markdown-to-gdocs-mcp",
-              version: "1.0.0"
+              version: pkg.version
             }
           }
         };
