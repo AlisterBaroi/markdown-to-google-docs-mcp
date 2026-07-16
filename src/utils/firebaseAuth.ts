@@ -3,42 +3,62 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, FirebaseApp } from 'firebase/app';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
+
+// Define strict shapes for custom configuration files
+interface FirebaseConfigDefault {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+  clientId?: string;
+  firestoreDatabaseId?: string;
+}
+
+interface GisTokenResponse {
+  error?: string;
+  access_token?: string;
+  expires_in?: string | number;
+}
+
+interface GisTokenClientInstance {
+  requestAccessToken: (options: { prompt: string }) => void;
+}
 
 // Construct the operational Firebase configuration.
-// It checks environment variables (VITE_ prefix is required for client-side configuration in Vite) First,
-// and falls back to a firebase-applet-config.json file at the repo root if present.
-const metaEnv = (import.meta as any).env || {};
+const metaEnv = import.meta.env || {};
 
-// We use import.meta.glob with a wildcard so that if the file doesn't exist, 
-// Vite won't throw a compile-time resolution error.
-const configFiles = (import.meta as any).glob('../../firebase-applet-config*.json', { eager: true });
+// Explicitly type the glob mapping object instead of using 'any'
+const configFiles = import.meta.glob<Record<string, unknown>>('../../firebase-applet-config*.json', { eager: true });
 const configKeys = Object.keys(configFiles);
-const firebaseConfigDefault = configKeys.length > 0 
-  ? ((configFiles[configKeys[0]] as any).default || {}) 
+
+const firebaseConfigDefault: FirebaseConfigDefault = configKeys.length > 0 
+  ? ((configFiles[configKeys[0]] as Record<string, any>).default || {}) 
   : {};
 
 const firebaseConfig = {
-  apiKey: metaEnv.VITE_FIREBASE_API_KEY || firebaseConfigDefault.apiKey || "",
-  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigDefault.authDomain || "",
-  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || firebaseConfigDefault.projectId || "",
-  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigDefault.storageBucket || "",
-  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigDefault.messagingSenderId || "",
-  appId: metaEnv.VITE_FIREBASE_APP_ID || firebaseConfigDefault.appId || "",
-  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigDefault.measurementId || ""
+  apiKey: (metaEnv.VITE_FIREBASE_API_KEY as string) || firebaseConfigDefault.apiKey || "",
+  authDomain: (metaEnv.VITE_FIREBASE_AUTH_DOMAIN as string) || firebaseConfigDefault.authDomain || "",
+  projectId: (metaEnv.VITE_FIREBASE_PROJECT_ID as string) || firebaseConfigDefault.projectId || "",
+  storageBucket: (metaEnv.VITE_FIREBASE_STORAGE_BUCKET as string) || firebaseConfigDefault.storageBucket || "",
+  messagingSenderId: (metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID as string) || firebaseConfigDefault.messagingSenderId || "",
+  appId: (metaEnv.VITE_FIREBASE_APP_ID as string) || firebaseConfigDefault.appId || "",
+  measurementId: (metaEnv.VITE_FIREBASE_MEASUREMENT_ID as string) || firebaseConfigDefault.measurementId || ""
 };
 
-// OAuth 2.0 Web client ID (Google Cloud Console -> APIs & Services -> Credentials).
-// Required for silent token refresh via Google Identity Services.
-const GOOGLE_CLIENT_ID = metaEnv.VITE_GOOGLE_CLIENT_ID || firebaseConfigDefault.clientId || "";
+// OAuth 2.0 Web client ID 
+const GOOGLE_CLIENT_ID = (metaEnv.VITE_GOOGLE_CLIENT_ID as string) || firebaseConfigDefault.clientId || "";
 const OAUTH_SCOPES = "https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive";
 
-let app: any = null;
-let auth: any = null;
-let db: any = null;
-let provider: any = null;
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let provider: GoogleAuthProvider | null = null;
 let initError: Error | null = null;
 
 try {
@@ -52,7 +72,6 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   
-  // Initializespecifically with the user's allocated Firestore Database ID if configured
   if (firebaseConfigDefault.firestoreDatabaseId) {
     db = getFirestore(app, firebaseConfigDefault.firestoreDatabaseId);
   } else {
@@ -60,12 +79,12 @@ try {
   }
 
   provider = new GoogleAuthProvider();
-  // Request Google Docs and Google Drive scopes
   provider.addScope('https://www.googleapis.com/auth/documents');
   provider.addScope('https://www.googleapis.com/auth/drive');
-} catch (err: any) {
-  console.warn('Firebase or Auth initialization bypassed:', err.message || err);
-  initError = err;
+} catch (err) {
+  const errorObj = err instanceof Error ? err : new Error(String(err));
+  console.warn('Firebase or Auth initialization bypassed:', errorObj.message);
+  initError = errorObj;
 }
 
 export { auth, db };
@@ -81,7 +100,7 @@ let cachedAccessToken: string | null = (() => {
   }
 })();
 
-// When the cached access token expires (epoch ms). Google access tokens last ~1h.
+// When the cached access token expires (epoch ms).
 let tokenExpiryMs: number | null = (() => {
   try {
     const v = localStorage.getItem('gdocs_token_expiry');
@@ -104,7 +123,7 @@ function persistToken(token: string, expiresInSec: number) {
 
 // --- Silent token refresh via Google Identity Services (GIS) ---
 let gisScriptPromise: Promise<void> | null = null;
-let gisTokenClient: any = null;
+let gisTokenClient: GisTokenClientInstance | null = null;
 let pendingResolve: ((t: string | null) => void) | null = null;
 let pendingRefresh: Promise<string | null> | null = null;
 
@@ -123,7 +142,7 @@ function loadGisScript(): Promise<void> {
   return gisScriptPromise;
 }
 
-async function ensureTokenClient(): Promise<any> {
+async function ensureTokenClient(): Promise<GisTokenClientInstance> {
   if (!GOOGLE_CLIENT_ID) {
     throw new Error('VITE_GOOGLE_CLIENT_ID is not configured; cannot silently refresh the Google access token.');
   }
@@ -132,7 +151,7 @@ async function ensureTokenClient(): Promise<any> {
     gisTokenClient = (window as any).google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: OAUTH_SCOPES,
-      callback: (resp: any) => {
+      callback: (resp: GisTokenResponse) => {
         const resolve = pendingResolve;
         pendingResolve = null;
         if (resp.error || !resp.access_token) {
@@ -145,11 +164,9 @@ async function ensureTokenClient(): Promise<any> {
       },
     });
   }
-  return gisTokenClient;
+  return gisTokenClient!;
 }
 
-// Silently obtain a fresh access token. No popup if the user's Google session is
-// active and consent was already granted; resolves null if interaction is required.
 export const refreshAccessTokenSilently = async (): Promise<string | null> => {
   if (pendingRefresh) return pendingRefresh;
   pendingRefresh = (async () => {
@@ -169,7 +186,6 @@ export const refreshAccessTokenSilently = async (): Promise<string | null> => {
   return pendingRefresh;
 };
 
-// Return a token guaranteed fresh for the next few minutes, refreshing if needed.
 export const getValidAccessToken = async (): Promise<string | null> => {
   const SKEW_MS = 5 * 60 * 1000;
   if (cachedAccessToken && tokenExpiryMs && Date.now() < tokenExpiryMs - SKEW_MS) {
@@ -179,7 +195,6 @@ export const getValidAccessToken = async (): Promise<string | null> => {
   return refreshed || cachedAccessToken;
 };
 
-// Initialize auth state listener. Call this on app load.
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
@@ -188,13 +203,11 @@ export const initAuth = (
     if (onAuthFailure) {
       setTimeout(() => onAuthFailure(), 0);
     }
-    return () => {}; // return dummy unsubscriber
+    return () => {};
   }
 
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
-      // Use the cached token if still valid; otherwise silently refresh via GIS so a
-      // page reload after the ~1h token expiry doesn't force a manual sign-in.
       const token = await getValidAccessToken();
 
       if (token) {
@@ -212,9 +225,8 @@ export const initAuth = (
   });
 };
 
-// Must be called from a button click or user interaction
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  if (!auth || initError) {
+  if (!auth || initError || !provider) {
     const errorMsg = initError ? initError.message : 'Firebase Auth is not configured. Set your VITE_FIREBASE_* environment variables to enable Google Sign-In.';
     throw new Error(errorMsg);
   }
@@ -226,10 +238,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('Failed to get access token from Firebase Auth');
     }
 
-    // Firebase doesn't surface expires_in; Google access tokens are ~1h, so assume 3600s.
     persistToken(credential.accessToken, 3600);
     return { user: result.user, accessToken: cachedAccessToken! };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Sign in error:', error);
     throw error;
   } finally {
