@@ -33,10 +33,10 @@ function stripMarkdownFormatting(text: string): {
     ) => {
       replacement: string;
       prefixLen: number;
-      newRanges: { type: string; start: number; end: number; data?: any }[];
+      newRanges: { type: string; start: number; end: number; data?: string }[];
     },
   ) => {
-    let match;
+    let match: RegExpExecArray | null = null;
     while ((match = regex.exec(cleaned)) !== null) {
       const startIndex = match.index;
       const { replacement, prefixLen, newRanges } = onMatch(match, startIndex);
@@ -50,7 +50,7 @@ function stripMarkdownFormatting(text: string): {
       const updateRange = (r: { startIndex: number; endIndex: number }) => {
         const updateVal = (idx: number): number => {
           if (idx <= startIndex) return idx;
-          if (idx >= startIndex + match[0].length) return idx + lengthDiff;
+          if (idx >= startIndex + match![0].length) return idx + lengthDiff;
           if (idx <= startIndex + prefixLen) return startIndex;
           if (idx >= startIndex + prefixLen + replacement.length) return startIndex + replacement.length;
           return idx - prefixLen;
@@ -67,7 +67,7 @@ function stripMarkdownFormatting(text: string): {
 
       newRanges.forEach((r) => {
         if (r.type === "link")
-          links.push({ startIndex: r.start, endIndex: r.end, url: r.data });
+          links.push({ startIndex: r.start, endIndex: r.end, url: r.data || "" });
         if (r.type === "bold")
           boldRanges.push({ startIndex: r.start, endIndex: r.end });
         if (r.type === "italic")

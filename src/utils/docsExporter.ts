@@ -5,6 +5,151 @@
 
 import { ConversionSettings, DocElement } from "../types";
 
+// --- Google API Interfaces ---
+
+interface GoogleDocsResponse {
+  documentId: string;
+}
+
+interface GoogleDriveMetadataResponse {
+  parents?: string[];
+}
+
+interface GoogleDriveFolderResponse {
+  id: string;
+}
+
+interface StructuralBlock {
+  startIndex: number;
+  endIndex: number;
+  paragraph?: Record<string, unknown>;
+  table?: {
+    tableRows?: {
+      tableCells?: {
+        startIndex: number;
+        endIndex: number;
+        content?: { startIndex: number; endIndex: number }[];
+      }[];
+    }[];
+  };
+}
+
+interface GoogleDocsMetadataResponse {
+  body?: {
+    content?: StructuralBlock[];
+  };
+}
+
+interface GroupedListGroup {
+  type: "list_group";
+  items: DocElement[];
+}
+
+type GroupedElement = DocElement | GroupedListGroup;
+
+interface BatchUpdateRequest {
+  insertText?: {
+    text: string;
+    location?: { index: number };
+    endOfSegmentLocation?: Record<string, unknown>;
+  };
+  insertTable?: {
+    rows: number;
+    columns: number;
+    location?: { index: number };
+    endOfSegmentLocation?: Record<string, unknown>;
+  };
+  updateParagraphStyle?: {
+    paragraphStyle: {
+      namedStyleType?: string;
+      lineSpacing?: number;
+      spacingMode?: string;
+      spaceAbove?: { magnitude: number; unit: string };
+      spaceBelow?: { magnitude: number; unit: string };
+      borderBottom?: {
+        color: { color: { rgbColor: { red: number; green: number; blue: number } } };
+        width: { magnitude: number; unit: string };
+        padding: { magnitude: number; unit: string };
+        dashStyle: string;
+      };
+      alignment?: string;
+      shading?: {
+        backgroundColor: { color: { rgbColor: { red: number; green: number; blue: number } } };
+      };
+    };
+    fields: string;
+    range: { startIndex: number; endIndex: number };
+  };
+  updateTextStyle?: {
+    textStyle: {
+      weightedFontFamily?: { fontFamily: string };
+      fontSize?: { magnitude: number; unit: string };
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      strikethrough?: boolean;
+      foregroundColor?: {
+        color: { rgbColor: { red: number; green: number; blue: number } };
+      };
+      link?: { url: string };
+    };
+    fields: string;
+    range: { startIndex: number; endIndex: number };
+  };
+  createParagraphBullets?: {
+    range: { startIndex: number; endIndex: number };
+    bulletPreset: string;
+  };
+  deleteParagraphBullets?: {
+    range: { startIndex: number; endIndex: number };
+  };
+  updateTableCellStyle?: {
+    tableCellStyle: {
+      backgroundColor: { color: { rgbColor: { red: number; green: number; blue: number } } };
+    };
+    fields: string;
+    tableRange: {
+      tableCellLocation: {
+        tableStartLocation: { index: number };
+        rowIndex: number;
+        columnIndex: number;
+      };
+      rowSpan: number;
+      columnSpan: number;
+    };
+  };
+  insertInlineImage?: {
+    location: { index: number };
+    uri: string;
+    objectSize: {
+      height: { magnitude: number; unit: string };
+      width: { magnitude: number; unit: string };
+    };
+  };
+}
+
+interface CellPair {
+  index: number;
+  requests: BatchUpdateRequest[];
+}
+
+interface ImageRequestGroup {
+  index: number;
+  requests: BatchUpdateRequest[];
+}
+
+interface FormatConfig {
+  fontFamily: string;
+  fontSize: number;
+  bold?: boolean;
+  color?: { red: number; green: number; blue: number };
+  spaceBelow?: number;
+  spaceAbove?: number;
+  lineSpacing?: number;
+}
+
+// --- End of Interfaces ---
+
 /**
  * Creates a blank Google Document with the given title
  */
@@ -27,7 +172,7 @@ export async function createBlankDoc(
     throw new Error(`Google Docs creation failed: ${res.statusText}`);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as GoogleDocsResponse;
   return data.documentId;
 }
 
@@ -38,12 +183,11 @@ export async function moveFileToFolder(
   accessToken: string,
   fileId: string,
   folderId: string,
-) {
+): Promise<void> {
   if (!folderId || folderId === "root") {
-    return; // Already in root directory by default
+    return;
   }
 
-  // 1. Fetch current parents
   const metaRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`,
     {
@@ -55,10 +199,9 @@ export async function moveFileToFolder(
     throw new Error("Failed to get current folder metadata for document");
   }
 
-  const metaData = await metaRes.json();
+  const metaData = (await metaRes.json()) as GoogleDriveMetadataResponse;
   const currentParents = (metaData.parents || []).join(",");
 
-  // 2. Patch file to move parents
   const patchRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${folderId}&removeParents=${currentParents}`,
     {
@@ -106,12 +249,12 @@ export async function createDriveFolder(
     throw new Error("Failed to create a new folder in Google Drive");
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as GoogleDriveFolderResponse;
   return data.id;
 }
 
 /**
- * Convers Markdown elements into styled paragraphs inside a Google Document
+ * Converts Markdown elements into styled paragraphs inside a Google Document
  */
 export async function styleDocContent(
   accessToken: string,
@@ -121,8 +264,7 @@ export async function styleDocContent(
 ): Promise<{ mermaidEmbedFailed: number }> {
   if (elements.length === 0) return { mermaidEmbedFailed: 0 };
 
-  // 1. Group contiguous list items to apply native lists successfully
-  const groupedElements: any[] = [];
+  const groupedElements: GroupedElement[] = [];
   let currentList: DocElement[] = [];
 
   for (let i = 0; i < elements.length; i++) {
@@ -141,15 +283,14 @@ export async function styleDocContent(
     groupedElements.push({ type: "list_group", items: currentList });
   }
 
-  // Step 1: Insert content structures sequentially (No formatting/indices calculation needed!)
-  const insertRequests: any[] = [];
+  const insertRequests: BatchUpdateRequest[] = [];
   for (let i = 0; i < groupedElements.length; i++) {
     const group = groupedElements[i];
     const isFirst = i === 0;
     const location = isFirst ? { location: { index: 1 } } : { endOfSegmentLocation: {} };
 
     if (group.type === "list_group") {
-      const listItems = group.items as DocElement[];
+      const listItems = group.items;
       const fullListText = listItems.map((item) => item.text).join("\n") + "\n";
       insertRequests.push({
         insertText: {
@@ -168,8 +309,6 @@ export async function styleDocContent(
         },
       });
     } else if (group.type === "mermaid" && group.imageUrl) {
-      // Empty placeholder paragraph; the rendered diagram image is inserted into it later
-      // (Batch 3), once we know its real index. Falls through to text if rendering failed.
       insertRequests.push({
         insertText: {
           ...location,
@@ -187,10 +326,6 @@ export async function styleDocContent(
       });
     }
   }
-
-  // Execute Step 1 batchUpdate to populate structure
-  console.log("[DEBUG] Grouped markdown elements to insert:", JSON.stringify(groupedElements, null, 2));
-  console.log("[DEBUG] Sending structural insert requests to Google Docs:", JSON.stringify(insertRequests, null, 2));
 
   const firstRes = await fetch(
     `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
@@ -210,7 +345,6 @@ export async function styleDocContent(
     throw new Error("Failed to insert structural components into document");
   }
 
-  // Step 2: Fetch the fully structure-populated document metadata to get real indices
   const docMetadataRes = await fetch(
     `https://docs.googleapis.com/v1/documents/${documentId}`,
     {
@@ -222,52 +356,37 @@ export async function styleDocContent(
     throw new Error("Failed to retrieve document metadata for index mapping");
   }
 
-  const docMetadata = await docMetadataRes.json();
+  const docMetadata = (await docMetadataRes.json()) as GoogleDocsMetadataResponse;
   const bodyContent = docMetadata.body?.content || [];
-  console.log("[DEBUG] Full body content from retrieved Doc Metadata:", JSON.stringify(bodyContent, null, 2));
 
-  // Filter the paragraph and table blocks to align with groupedElements
   const structuralBlocks = bodyContent.filter(
-    (el: any) => el.paragraph || el.table
+    (el) => el.paragraph || el.table
   );
-  console.log("[DEBUG] Filtered Structural Blocks (Paragraphs & Tables):", JSON.stringify(structuralBlocks, null, 2));
 
-  // The blocks do NOT align 1:1 with groupedElements: the Docs API inserts an implicit
-  // newline paragraph before every table (InsertTableRequest: "A newline character will be
-  // inserted before it"), and the body keeps its trailing empty paragraph. Walk the blocks
-  // with a pointer that advances past blocks of the wrong kind, so each group is matched to
-  // the next block of its own kind.
   const usableBlocks = structuralBlocks;
-
   let blockPointer = 0;
-  const getNextBlock = (kind: "paragraph" | "table") => {
+
+  const getNextBlock = (kind: "paragraph" | "table"): StructuralBlock | null => {
     while (blockPointer < usableBlocks.length && !usableBlocks[blockPointer][kind]) {
       blockPointer++;
     }
     if (blockPointer >= usableBlocks.length) {
-      console.warn(`[DEBUG] getNextBlock ran out of usableBlocks looking for a ${kind}! Pointer:`, blockPointer);
       return null;
     }
-    const block = usableBlocks[blockPointer++];
-    console.log(`[DEBUG] getNextBlock (Pointer: ${blockPointer - 1}, kind: ${kind}) returned block:`, JSON.stringify(block, null, 2));
-    return block;
+    return usableBlocks[blockPointer++];
   };
 
-  const requests: any[] = [];
-  const cellPairs: { index: number; requests: any[] }[] = [];
+  const requests: BatchUpdateRequest[] = [];
+  const cellPairs: CellPair[] = [];
 
-  // Helper to push text formatting
   const addTextStyles = (
     el: DocElement,
     start: number,
     end: number,
     formatMapKey: string,
   ) => {
-    // Add 1 to end index to explicitly encompass the terminating newline character
-    // which ensures consistent paragraph styling and inherits text styling.
     const styleEnd = end + 1;
 
-    const format = settings[formatMapKey as keyof ConversionSettings] as any;
     if (el.type === "title") {
       requests.push({
         updateParagraphStyle: {
@@ -302,15 +421,22 @@ export async function styleDocContent(
       });
     }
 
-    const textStyle: any = {
-      weightedFontFamily: { fontFamily: format.fontFamily },
-      fontSize: { magnitude: format.fontSize, unit: "PT" },
-      bold: format.bold,
+    const format = settings[formatMapKey as keyof ConversionSettings] as FormatConfig;
+    
+    const textStyleReq: BatchUpdateRequest = {
+      updateTextStyle: {
+        textStyle: {
+          weightedFontFamily: { fontFamily: format.fontFamily },
+          fontSize: { magnitude: format.fontSize, unit: "PT" },
+          bold: format.bold,
+        },
+        fields: "weightedFontFamily,fontSize,bold",
+        range: { startIndex: start, endIndex: styleEnd },
+      },
     };
-    let textFields = "weightedFontFamily,fontSize,bold";
 
-    if (format.color) {
-      textStyle.foregroundColor = {
+    if (format.color && textStyleReq.updateTextStyle?.textStyle) {
+      textStyleReq.updateTextStyle.textStyle.foregroundColor = {
         color: {
           rgbColor: {
             red: format.color.red,
@@ -319,22 +445,16 @@ export async function styleDocContent(
           },
         },
       };
-      textFields += ",foregroundColor";
+      textStyleReq.updateTextStyle.fields += ",foregroundColor";
     }
 
-    if (el.type === "code_block") {
-      textStyle.weightedFontFamily = { fontFamily: "Courier New" };
-      textStyle.fontSize = { magnitude: 11, unit: "PT" };
-      textFields += ",weightedFontFamily,fontSize";
+    if (el.type === "code_block" && textStyleReq.updateTextStyle?.textStyle) {
+      textStyleReq.updateTextStyle.textStyle.weightedFontFamily = { fontFamily: "Courier New" };
+      textStyleReq.updateTextStyle.textStyle.fontSize = { magnitude: 11, unit: "PT" };
+      textStyleReq.updateTextStyle.fields += ",weightedFontFamily,fontSize";
     }
 
-    requests.push({
-      updateTextStyle: {
-        textStyle,
-        fields: textFields,
-        range: { startIndex: start, endIndex: styleEnd },
-      },
-    });
+    requests.push(textStyleReq);
 
     if (el.links?.length) {
       el.links.forEach((link) => {
@@ -351,18 +471,27 @@ export async function styleDocContent(
         });
       });
     }
+
     if (el.boldRanges?.length) {
       el.boldRanges.forEach((range) => {
         if (range.startIndex === range.endIndex) return;
         const boldFormat = settings.textBold;
-        const boldStyle: any = {
-          bold: boldFormat.bold,
-          weightedFontFamily: { fontFamily: boldFormat.fontFamily },
-          fontSize: { magnitude: boldFormat.fontSize, unit: "PT" },
+        const boldReq: BatchUpdateRequest = {
+          updateTextStyle: {
+            textStyle: {
+              bold: boldFormat.bold,
+              weightedFontFamily: { fontFamily: boldFormat.fontFamily },
+              fontSize: { magnitude: boldFormat.fontSize, unit: "PT" },
+            },
+            fields: "bold,weightedFontFamily,fontSize",
+            range: {
+              startIndex: start + range.startIndex,
+              endIndex: start + range.endIndex,
+            },
+          },
         };
-        let bFields = "bold,weightedFontFamily,fontSize";
-        if (boldFormat.color) {
-          boldStyle.foregroundColor = {
+        if (boldFormat.color && boldReq.updateTextStyle?.textStyle) {
+          boldReq.updateTextStyle.textStyle.foregroundColor = {
             color: {
               rgbColor: {
                 red: boldFormat.color.red,
@@ -371,32 +500,32 @@ export async function styleDocContent(
               },
             },
           };
-          bFields += ",foregroundColor";
+          boldReq.updateTextStyle.fields += ",foregroundColor";
         }
-        requests.push({
+        requests.push(boldReq);
+      });
+    }
+
+    if (el.italicRanges?.length) {
+      el.italicRanges.forEach((range) => {
+        if (range.startIndex === range.endIndex) return;
+        const italicFormat = settings.textItalic;
+        const italicReq: BatchUpdateRequest = {
           updateTextStyle: {
-            textStyle: boldStyle,
-            fields: bFields,
+            textStyle: {
+              italic: true,
+              weightedFontFamily: { fontFamily: italicFormat.fontFamily },
+              fontSize: { magnitude: italicFormat.fontSize, unit: "PT" },
+            },
+            fields: "italic,weightedFontFamily,fontSize",
             range: {
               startIndex: start + range.startIndex,
               endIndex: start + range.endIndex,
             },
           },
-        });
-      });
-    }
-    if (el.italicRanges?.length) {
-      el.italicRanges.forEach((range) => {
-        if (range.startIndex === range.endIndex) return;
-        const italicFormat = settings.textItalic;
-        const italicStyle: any = {
-          italic: true,
-          weightedFontFamily: { fontFamily: italicFormat.fontFamily },
-          fontSize: { magnitude: italicFormat.fontSize, unit: "PT" },
         };
-        let iFields = "italic,weightedFontFamily,fontSize";
-        if (italicFormat.color) {
-          italicStyle.foregroundColor = {
+        if (italicFormat.color && italicReq.updateTextStyle?.textStyle) {
+          italicReq.updateTextStyle.textStyle.foregroundColor = {
             color: {
               rgbColor: {
                 red: italicFormat.color.red,
@@ -405,32 +534,32 @@ export async function styleDocContent(
               },
             },
           };
-          iFields += ",foregroundColor";
+          italicReq.updateTextStyle.fields += ",foregroundColor";
         }
-        requests.push({
+        requests.push(italicReq);
+      });
+    }
+
+    if (el.underlineRanges?.length) {
+      el.underlineRanges.forEach((range) => {
+        if (range.startIndex === range.endIndex) return;
+        const uFormat = settings.textUnderline;
+        const uReq: BatchUpdateRequest = {
           updateTextStyle: {
-            textStyle: italicStyle,
-            fields: iFields,
+            textStyle: {
+              underline: true,
+              weightedFontFamily: { fontFamily: uFormat.fontFamily },
+              fontSize: { magnitude: uFormat.fontSize, unit: "PT" },
+            },
+            fields: "underline,weightedFontFamily,fontSize",
             range: {
               startIndex: start + range.startIndex,
               endIndex: start + range.endIndex,
             },
           },
-        });
-      });
-    }
-    if (el.underlineRanges?.length) {
-      el.underlineRanges.forEach((range) => {
-        if (range.startIndex === range.endIndex) return;
-        const uFormat = settings.textUnderline;
-        const uStyle: any = {
-          underline: true,
-          weightedFontFamily: { fontFamily: uFormat.fontFamily },
-          fontSize: { magnitude: uFormat.fontSize, unit: "PT" },
         };
-        let uFields = "underline,weightedFontFamily,fontSize";
-        if (uFormat.color) {
-          uStyle.foregroundColor = {
+        if (uFormat.color && uReq.updateTextStyle?.textStyle) {
+          uReq.updateTextStyle.textStyle.foregroundColor = {
             color: {
               rgbColor: {
                 red: uFormat.color.red,
@@ -439,20 +568,12 @@ export async function styleDocContent(
               },
             },
           };
-          uFields += ",foregroundColor";
+          uReq.updateTextStyle.fields += ",foregroundColor";
         }
-        requests.push({
-          updateTextStyle: {
-            textStyle: uStyle,
-            fields: uFields,
-            range: {
-              startIndex: start + range.startIndex,
-              endIndex: start + range.endIndex,
-            },
-          },
-        });
+        requests.push(uReq);
       });
     }
+
     if (el.strikethroughRanges?.length) {
       el.strikethroughRanges.forEach((range) => {
         if (range.startIndex === range.endIndex) return;
@@ -479,54 +600,53 @@ export async function styleDocContent(
             : 4;
     } else if (el.type === "code_block") spaceBelow = 0;
 
-    const paragraphStyle: any = {
-      lineSpacing: format.lineSpacing || 100,
-      spacingMode: "NEVER_COLLAPSE",
-      spaceAbove: {
-        magnitude: format.spaceAbove !== undefined ? format.spaceAbove : 0,
-        unit: "PT",
+    const paragraphStyleReq: BatchUpdateRequest = {
+      updateParagraphStyle: {
+        paragraphStyle: {
+          lineSpacing: format.lineSpacing || 100,
+          spacingMode: "NEVER_COLLAPSE",
+          spaceAbove: {
+            magnitude: format.spaceAbove !== undefined ? format.spaceAbove : 0,
+            unit: "PT",
+          },
+          spaceBelow: { magnitude: spaceBelow, unit: "PT" },
+        },
+        fields: "lineSpacing,spaceAbove,spaceBelow,spacingMode",
+        range: { startIndex: start, endIndex: styleEnd },
       },
-      spaceBelow: { magnitude: spaceBelow, unit: "PT" },
     };
-    let paragraphFields = "lineSpacing,spaceAbove,spaceBelow,spacingMode";
 
-    if (el.type === "horizontal_rule") {
-      paragraphStyle.borderBottom = {
+    if (el.type === "horizontal_rule" && paragraphStyleReq.updateParagraphStyle?.paragraphStyle) {
+      paragraphStyleReq.updateParagraphStyle.paragraphStyle.borderBottom = {
         color: { color: { rgbColor: { red: 0, green: 0, blue: 0 } } },
         width: { magnitude: 1, unit: "PT" },
         padding: { magnitude: 0, unit: "PT" },
         dashStyle: "SOLID",
       };
-      paragraphFields += ",borderBottom";
-    } else if (el.type === "text") {
-      paragraphStyle.alignment = "JUSTIFIED";
-      paragraphFields += ",alignment";
-    } else if (el.type === "code_block") {
-      paragraphStyle.shading = {
+      paragraphStyleReq.updateParagraphStyle.fields += ",borderBottom";
+    } else if (el.type === "text" && paragraphStyleReq.updateParagraphStyle?.paragraphStyle) {
+      paragraphStyleReq.updateParagraphStyle.paragraphStyle.alignment = "JUSTIFIED";
+      paragraphStyleReq.updateParagraphStyle.fields += ",alignment";
+    } else if (el.type === "code_block" && paragraphStyleReq.updateParagraphStyle?.paragraphStyle) {
+      paragraphStyleReq.updateParagraphStyle.paragraphStyle.shading = {
         backgroundColor: {
           color: { rgbColor: { red: 0.95, green: 0.95, blue: 0.95 } },
         },
       };
-      paragraphStyle.alignment = "START";
-      paragraphFields += ",shading,alignment";
+      paragraphStyleReq.updateParagraphStyle.paragraphStyle.alignment = "START";
+      paragraphStyleReq.updateParagraphStyle.fields += ",shading,alignment";
     }
 
-    requests.push({
-      updateParagraphStyle: {
-        paragraphStyle,
-        fields: paragraphFields,
-        range: { startIndex: start, endIndex: styleEnd },
-      },
-    });
+    requests.push(paragraphStyleReq);
   };
 
   for (let i = 0; i < groupedElements.length; i++) {
     const group = groupedElements[i];
 
     if (group.type === "list_group") {
-      const listItems = group.items as DocElement[];
-      let firstBlock: any = null;
-      let lastBlock: any = null;
+      const listItems = group.items;
+      let firstBlock: StructuralBlock | null = null;
+      let lastBlock: StructuralBlock | null = null;
 
       for (let j = 0; j < listItems.length; j++) {
         const item = listItems[j];
@@ -536,7 +656,7 @@ export async function styleDocContent(
           if (j === listItems.length - 1) lastBlock = block;
 
           const start = block.startIndex;
-          const end = block.endIndex - 1; // omit the trailing newline
+          const end = block.endIndex - 1;
           addTextStyles(item, start, end, "list");
         }
       }
@@ -555,21 +675,12 @@ export async function styleDocContent(
         });
       }
     } else if (group.type === "table") {
-      console.log("[DEBUG] Group element is a table. Retrieving table block...");
       const block = getNextBlock("table");
-      if (block) {
-        console.log("[DEBUG] Recovered block for table:", JSON.stringify(block, null, 2));
-      } else {
-        console.warn("[DEBUG] Recovered block for table is NULL!");
-      }
       if (block && block.table) {
         const gTable = block.table;
         const rows = group.tableRows?.length || 1;
         const cols = group.tableRows ? Math.max(...group.tableRows.map((row: string[]) => row.length)) : 1;
-        console.log(`[DEBUG] Table metadata from group: rows=${rows}, cols=${cols}`);
-        console.log("[DEBUG] Table structure from Doc Metadata:", JSON.stringify(gTable, null, 2));
 
-        // Apply header background formatting
         requests.push({
           updateTableCellStyle: {
             tableCellStyle: {
@@ -590,29 +701,15 @@ export async function styleDocContent(
           },
         });
 
-        // Collect cell text insertions
         if (group.tableRows) {
           for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
               const rawCellT = group.tableRows[r]?.[c] || "";
               const cell = gTable.tableRows?.[r]?.tableCells?.[c];
-              console.log(`[DEBUG] Processing cells [row=${r}, col=${c}]: text="${rawCellT}"`);
-              if (cell) {
-                console.log(`[DEBUG] Found TableCell in Doc Metadata: startIndex=${cell.startIndex}, endIndex=${cell.endIndex}`);
-                if (cell.content && cell.content.length > 0) {
-                  console.log(`[DEBUG] Cell content first element:`, JSON.stringify(cell.content[0], null, 2));
-                }
-              } else {
-                console.warn(`[DEBUG] TableCell was NOT found in Doc Metadata at Row ${r}, Col ${c}!`);
-              }
 
               if (cell && rawCellT.length > 0) {
                 const cellInsertIdx = cell.content?.[0]?.startIndex ?? cell.startIndex;
-                console.log(`[DEBUG] Computed cellInsertIdx = ${cellInsertIdx}`);
-                if (cellInsertIdx === undefined) {
-                  console.warn(`[DEBUG] cellInsertIdx is undefined for cell [row=${r}, col=${c}]`);
-                  continue;
-                }
+                if (cellInsertIdx === undefined) continue;
 
                 const isHeader = r === 0;
                 cellPairs.push({
@@ -644,27 +741,16 @@ export async function styleDocContent(
             }
           }
         }
-      } else {
-        console.warn("[DEBUG] Block is NOT a table: block.table is falsy!", block);
       }
     } else {
-      console.log(`[DEBUG] Group element is not list or table (type=${group.type}). Getting next block...`);
       const block = getNextBlock("paragraph");
-      if (block) {
-        console.log(`[DEBUG] Block for non-table/list (type=${group.type}): startIndex=${block.startIndex}, endIndex=${block.endIndex}`);
-      } else {
-        console.warn(`[DEBUG] Block for non-table/list (type=${group.type}) is NULL!`);
-      }
       if (block && block.paragraph) {
-        // Image mermaids are styled+filled in Batch 3 (after re-fetching indices); the
-        // placeholder paragraph just needs its slot here to keep block alignment.
         if (group.type === "mermaid" && group.imageUrl) {
-          // intentionally no styling here
+          // intentionally blank
         } else {
           const start = block.startIndex;
-          const end = block.endIndex - 1; // omit the trailing newline
+          const end = block.endIndex - 1;
 
-          // Prevent bullet leaks
           requests.push({
             deleteParagraphBullets: {
               range: { startIndex: start, endIndex: block.endIndex },
@@ -682,15 +768,10 @@ export async function styleDocContent(
     }
   }
 
-  // Sort cell insertions in DESCENDING order of index! (Very important to avoid shifting lower index elements!)
-  console.log(`[DEBUG] Raw cellPairs collected:`, JSON.stringify(cellPairs, null, 2));
   cellPairs.sort((a, b) => b.index - a.index);
-  console.log(`[DEBUG] Sorted cellPairs:`, JSON.stringify(cellPairs, null, 2));
   const cellInsertRequests = cellPairs.flatMap((pair) => pair.requests);
 
-  // Combine formatting and cell content insertions
   const finalRequests = [...requests, ...cellInsertRequests];
-  console.log("[DEBUG] Sending batchUpdate requests final list:", JSON.stringify(finalRequests, null, 2));
 
   if (finalRequests.length > 0) {
     const updateRes = await fetch(
@@ -709,18 +790,11 @@ export async function styleDocContent(
       const errText = await updateRes.text();
       console.error("Batch Update failed:", errText);
       throw new Error("Failed to style document content successfully");
-    } else {
-      console.log("[DEBUG] Batch update succeeded!");
     }
-  } else {
-    console.log("[DEBUG] No formatting/insert requests generated.");
   }
 
-  // Step 3: insert rendered mermaid diagram images into their placeholder paragraphs.
-  // Done last with freshly re-fetched indices (Batch 2's cell inserts shift positions),
-  // and images inserted in descending index order so earlier inserts don't move later ones.
   const hasImages = groupedElements.some(
-    (g: any) => g.type === "mermaid" && g.imageUrl
+    (g) => g.type === "mermaid" && g.imageUrl
   );
   if (!hasImages) return { mermaidEmbedFailed: 0 };
 
@@ -731,28 +805,25 @@ export async function styleDocContent(
   if (!meta2Res.ok) {
     throw new Error("Failed to retrieve document metadata for image placement");
   }
-  const meta2 = await meta2Res.json();
+  const meta2 = (await meta2Res.json()) as GoogleDocsMetadataResponse;
   const blocks2 = (meta2.body?.content || []).filter(
-    (el: any) => el.paragraph || el.table
+    (el) => el.paragraph || el.table
   );
 
-  // Page content width is ~468pt (Letter, 1in margins). Cap diagrams to that, keep aspect ratio.
   const MAX_WIDTH_PT = 450;
-  const pxToPt = (px: number) => px * 0.75; // 96dpi -> pt
+  const pxToPt = (px: number) => px * 0.75;
 
-  // Walk groups/blocks with the same kind-aware pointer as the styling pass: list groups
-  // consume one paragraph per item, tables skip their implicit leading newline paragraph.
   let imgPointer = 0;
-  const nextImageBlock = (kind: "paragraph" | "table") => {
+  const nextImageBlock = (kind: "paragraph" | "table"): StructuralBlock | null => {
     while (imgPointer < blocks2.length && !blocks2[imgPointer][kind]) imgPointer++;
     return imgPointer < blocks2.length ? blocks2[imgPointer++] : null;
   };
 
-  const imageRequests: { index: number; requests: any[] }[] = [];
+  const imageRequests: ImageRequestGroup[] = [];
   const insertedUrls: string[] = [];
   for (const group of groupedElements) {
     if (group.type === "list_group") {
-      for (let j = 0; j < (group.items as DocElement[]).length; j++) nextImageBlock("paragraph");
+      for (let j = 0; j < group.items.length; j++) nextImageBlock("paragraph");
       continue;
     }
     const block = nextImageBlock(group.type === "table" ? "table" : "paragraph");
@@ -794,21 +865,16 @@ export async function styleDocContent(
 
   if (imageRequests.length === 0) return { mermaidEmbedFailed: 0 };
 
-  // Once these images are hosted no longer needed, delete them from the app server. Google
-  // copies the bytes into the Doc synchronously during the insert batch, so it's safe to
-  // delete right after the call returns (success or failure). TTL sweep is the backstop.
-  const cleanupHostedImages = async () => {
+  const cleanupHostedImages = async (): Promise<void> => {
     await Promise.all(
       insertedUrls.map((u) =>
         fetch(u, { method: "DELETE" }).catch(() => {
-          /* best-effort; the server's TTL will reclaim it anyway */
+          /* best-effort */
         })
       )
     );
   };
 
-  // Alignment requests don't shift indices; image inserts do — so emit all alignment
-  // updates first, then the inserts in descending index order.
   imageRequests.sort((a, b) => b.index - a.index);
   const alignReqs = imageRequests.flatMap((p) => p.requests.filter((r) => r.updateParagraphStyle));
   const insertReqs = imageRequests.flatMap((p) => p.requests.filter((r) => r.insertInlineImage));
@@ -827,15 +893,11 @@ export async function styleDocContent(
   );
 
   if (!imgRes.ok) {
-    // Non-fatal: the document is already built. The most common cause is Google being
-    // unable to fetch the image URL (e.g. a localhost dev server it can't reach), so we
-    // log and leave the placeholder rather than failing the whole conversion.
     const errText = await imgRes.text();
     console.error("Mermaid image insertion failed (diagrams left blank):", errText);
     await cleanupHostedImages();
     return { mermaidEmbedFailed: imageRequests.length };
   }
-  console.log("[DEBUG] Mermaid image insertion succeeded!");
   await cleanupHostedImages();
   return { mermaidEmbedFailed: 0 };
 }
